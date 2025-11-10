@@ -25,7 +25,7 @@ Jeżeli współrzędne zaczynają się od cyfry to wyraz jest układany poziomo,
 Wyrazy są odczytywane od lewej do prawej i od góry do dołu. Na tym etapie załóż, że wykładane słowa są poprawne, tzn. zgodne z oficjalnym słownikiem polskiej federacji scrabble. 
 Plik osps.dawg programu QUACKLE zawiera wykaz wszystkich polskich słów dozwolonych w grze przez polską federacją scrabble.
 Powyższy system współrzędnych układanych słów odnosi się tylko do wprowadzania ruchów i prezentacji planszy. Wewnątrz programu, jego logika powinna opierać się na współrzędnych liczbowych (X,Y),
-gdzie X i Y są liczbami całkowitymi od 0 do 14. 
+gdzie X i Y są liczbami całkowitymi od 0 do 14. X dla oznaczenia wierszy a Y dla oznaczenia kolumn.
 Zamiast oznaczenia pozycji mogą się pojawić dwa oznaczenia ruchów specjalnych takich jak PASS (rezygnacja z ruchu) i EXCHANGE (ruch polegający na wymianie płytek zamiast ich wykładania na planszy).
 Jeżeli układane słowo zawiera litery już wcześniej ułożone na planszy to w zapisie ruchu umieszcza je się w nawiasach (). Przykładowy zapis czterech pierwszych ruchów. Dla rozgrywki 
 zawodników Adam i Tomasz, przy założeniu że ruchy Adama rejestrowane są z zawartością stojaka (ang. rack) :
