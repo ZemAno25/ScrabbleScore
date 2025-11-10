@@ -8,7 +8,7 @@ class Board
     private array $board;
 
     // Definicja pól premiowych (DW, TW, DL, TL) i ich współrzędne
-    // KLUCZOWA POPRAWKA: Klucze są teraz ciągami znaków "Y,X"
+    // KLUCZOWA POPRAWKA: Klucze są teraz ciągami znaków "X,Y"
     private const PREMIUM_SPOTS = [
         // Potrójne Słowo (TW)
         '0,0' => 'TW', '0,7' => 'TW', '0,14' => 'TW',
@@ -40,12 +40,12 @@ class Board
     private function initializeBoard(): void
     {
         $this->board = [];
-        for ($y = 0; $y < 15; $y++) {
-            for ($x = 0; $x < 15; $x++) {
-                $premiumKey = "{$y},{$x}"; // Użycie ciągów "y,x" jako klucza
+        for ($x = 0; $x < 15; $x++) {
+            for ($y = 0; $y < 15; $y++) {
+                $premiumKey = "{$x},{$y}"; // Użycie ciągów "x,y" jako klucza
                 $premium = self::PREMIUM_SPOTS[$premiumKey] ?? null;
 
-                $this->board[$y][$x] = [
+                $this->board[$x][$y] = [
                     'tile' => null,
                     'premium' => $premium
                 ];
@@ -53,31 +53,31 @@ class Board
         }
     }
 
-    public function getTile(int $y, int $x): ?array
+    public function getTile(int $x, int $y): ?array
     {
-        if ($y < 0 || $y >= 15 || $x < 0 || $x >= 15) {
+        if ($x < 0 || $x >= 15 || $y < 0 || $y >= 15) {
             return null;
         }
-        return $this->board[$y][$x]['tile'];
+        return $this->board[$x][$y]['tile'];
     }
 
     /**
      * Sprawdza, czy dane pole na planszy jest już zajęte płytką.
      */
-    public function isOccupied(int $y, int $x): bool
+    public function isOccupied(int $x, int $y): bool
     {
         // Sprawdzenie granic
-        if ($y < 0 || $y >= 15 || $x < 0 || $x >= 15) {
+        if ($x < 0 || $x >= 15 || $y < 0 || $y >= 15) {
             return false;
         }
 
-        return $this->board[$y][$x]['tile'] !== null;
+        return $this->board[$x][$y]['tile'] !== null;
     }
 
     public function placeTile(int $y, int $x, string $letter, bool $isBlank = false): bool
     {
-        if (!$this->isOccupied($y, $x)) {
-            $this->board[$y][$x]['tile'] = [
+        if (!$this->isOccupied($x, $y)) {
+            $this->board[$x][$y]['tile'] = [
                 'letter' => $letter,
                 'isBlank' => $isBlank
             ];
@@ -86,24 +86,24 @@ class Board
         return false;
     }
 
-    public function getPremium(int $y, int $x): ?string
+    public function getPremium(int $x, int $y): ?string
     {
-        if ($y < 0 || $y >= 15 || $x < 0 || $x >= 15) {
+        if ($x < 0 || $x >= 15 || $y < 0 || $y >= 15) {
             return null;
         }
         // Premium jest ustawione tylko raz, w initializeBoard, i nie jest pobierane z PREMIUM_SPOTS
-        return $this->board[$y][$x]['premium']; 
+        return $this->board[$x][$y]['premium']; 
     }
 
-    public function removePremium(int $y, int $x): void
+    public function removePremium(int $x, int $y): void
     {
-        if ($y >= 0 && $y < 15 && $x >= 0 && $x < 15) {
-            $this->board[$y][$x]['premium'] = null;
+        if ($x >= 0 && $x < 15 && $y >= 0 && $y < 15) {
+            $this->board[$x][$y]['premium'] = null;
         }
     }
 
-    public function isCenter(int $y, int $x): bool
+    public function isCenter(int $x, int $y): bool
     {
-        return $y === 7 && $x === 7;
+        return $x === 7 && $y === 7;
     }
 }
