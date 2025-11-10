@@ -1,0 +1,58 @@
+
+Kontynuj budowę aplikacji ScrabbleScore do rejestracji przebiegu gry w scrabble.
+Aktualny stan rozwoju aplikacji dostępny jest pod adresem Github https://github.com/ZemAno25/ScrabbleScore
+Napisz program do zapisu przebiegu rozgrywki dwóch zawodników w scrabble. Przy pisaniu program wykorzystywane ma być PHP Version 8.1.2-1ubuntu2.22, PostgreSQL 14 i Apache 2.0.
+Przy pisaniu kodu staraj się wykorzystać lub adoptować rozwiązania opracowane przy budowie programu QACKLE, którego kod jest dostępny na stronie https://github.com/quackle/quackle
+ScrabbleScore w odróżnienieu od QUACKLE ogranicza się tylko do rejestracji rozgrywek w Scrabble i automatycznego liczeniu punktów.
+
+Strona startowa aplikacji powinna wyświetlać menu składające się z trzech opcji dostępnych po niśnięciu odpowiedniego przycisku:
+1. Zarejestruj gracza.
+2. Zarejestruj przebieg gry
+3. Pokaż statystyki rozgrywek.     
+
+ 
+Ad. 1 Opis rejestracji graczy:
+Prosta rejestracja gracza polega na zarejestrowaniu unikalnego nicka w tabeli bazy danych graczy.
+
+Ad. 2 Opis rejestracji przebiegu gry
+Rejestracja rozgrywki powinna rozpocząć się od utworzenia gry, tj. daty i godziny, wskazania uczestników (wcześniej zarejestrowanych już). Pierwszy gracz rozpoczyna grę.
+Ułożone słowa wprowadzane są w trybie tekstowym w konwencji programu QUACKLE: <rack> <pozycja> <słowo> dla zawodnika z rejestracją stojaka (rack) lub <pozycja> <słowo> dla zawodnika 
+bez rejstracji zawartości stojaka (rack). 
+Przy czym zawartość stojaka <rack> wprowadzana jest tylko dla jednego wybranego gracza, w tym przypadku dla Adama.
+<pozycja> oznacza współrzędne na planszy, gdzie wiersze są ponumerowane od 1 do 15, a kolumny oznaczone literami od "A" do "O". Układ współrzędnych planszy w ScrabbleScore ma być taki
+jak w Quackle, tj. cyfry oznaczają wiersze a litery kolumny. W oficjalnym polskim Scrabble jest odwrotnie i literami oznaczone są wiersze a cyframi kolmny. 
+Jeżeli współrzędne zaczynają się od cyfry to wyraz jest układany poziomo, a jeżeli od litery to pionowo.
+Wyrazy są odczytywane od lewej do prawej i od góry do dołu. Na tym etapie załóż, że wykładane słowa są poprawne, tzn. zgodne z oficjalnym słownikiem polskiej federacji scrabble. 
+Plik osps.dawg programu QUACKLE zawiera wykaz wszystkich polskich słów dozwolonych w grze przez polską federacją scrabble.
+Powyższy system współrzędnych układanych słów odnosi się tylko do wprowadzania ruchów i prezentacji planszy. Wewnątrz programu, jego logika powinna opierać się na współrzędnych liczbowych (X,Y),
+gdzie X i Y są liczbami całkowitymi od 0 do 14. 
+Zamiast oznaczenia pozycji mogą się pojawić dwa oznaczenia ruchów specjalnych takich jak PASS (rezygnacja z ruchu) i EXCHANGE (ruch polegający na wymianie płytek zamiast ich wykładania na planszy).
+Jeżeli układane słowo zawiera litery już wcześniej ułożone na planszy to w zapisie ruchu umieszcza je się w nawiasach (). Przykładowy zapis czterech pierwszych ruchów. Dla rozgrywki 
+zawodników Adam i Tomasz, przy założeniu że ruchy Adama rejestrowane są z zawartością stojaka (ang. rack) :
+1. ADAM WIJĘKRA 8F WIJĘ +10/10
+2. TOMASZ 7G BAGNO +37/37
+3. ADAM KARÓWA? K4 KAR(O) +10/20
+4. TOMASZ 8K MIRÓW +40/77
+5. ADAM PSWAWA? N6 PS(Ó)W +13/33
+6. TOMASZ O1 TANIMI +30/107
+....
+Nr i nick gracza oraz wartość punktowa ruchu  oraz wartość sumaryczna punktów zdobytych w grze  powinny być wyświetlane automatycznie przez aplikację po wprowadzeniu ruchu. Zatwierdzenie ruchu powinno 
+spowodować aktualizację wyświetlanej planszy z aktualnym stanem gry. Zapis gry należy prowadzić dużymi literami. Małej litery należy użyć przy wykładaniu "blanka" do ustalenia jaką literę zastępuje.
+Znak "?" w zapisie gry jest użuwany do oznaczania "blanka" na stojaku (rack).
+
+Po zarejestrowaniu gry ekran pokazujący powinien być podzielony na dwie części. Lewa część powinna pokazywać ułożone przez graczy słowa w kolejnych ruchach i ich wartość punktową. 
+Prawa część ekranu powinna wyświetlać aktualny zawartość planszy gry. Styl wizualny (themes) gry powinien być analogiczny jak użyty w raportach programu QUACKLE, którego kod jest dostępny na 
+Github https://github.com/quackle/quackle
+Funkcjonalność programu ScrabbleScore ma być ograniczona tylko do rejestracji poszczególnych ruchów graczy i wyliczeniu po każdym ruchu aktualnych wartości punktowych i wyświetlenia planszy z aktualnym
+stanem gry.
+Wszystkie dane dotyczące rozgrywki i poszczególnych ruchów powinny być zapisane w bazie danych PostgreSQL o nazwie scrabblegames. Do bazy scrabblegames posiada wszystkie prawa dostępu użytkownik scrabble_usr.
+
+Ad. 3 Prezentacja statystyk z zapisanych gier.
+W ramach funkcjonalnośći prezentującej statystyk zarejestrowanych gier program powinien umożliwiać:
+- przeglądanie historycznych gier;
+- raporty ze statystykami:
+   - gry o największej sumie punktów;
+   - ruchy o największej liczbie punktów;
+   - ilości wyłożonych siódemek (specjalnie premiowanych ruchów) przez graczy.
+Rejestracja gry powinna być zgodna z zasadami opisanymi w przesłanym pliku: "Zasady gry w scrabble.rtf"
+
