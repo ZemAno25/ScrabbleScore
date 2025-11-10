@@ -1,0 +1,94 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+.game-container {
+    display: flex;
+    gap: 30px;
+}
+
+.move-list {
+    flex: 1;
+}
+
+.board-container {
+    flex: 0 0 620px; /* Utrzymuje planszę w stałym rozmiarze */
+}
+
+.error {
+    color: red;
+    font-weight: bold;
+}
+
+/* --- Style dla Planszy (Scrabble) --- */
+
+.scrabble-board table {
+    border-collapse: collapse;
+    width: 620px; /* Stała szerokość planszy */
+    table-layout: fixed; /* Ustalenie stałego rozmiaru komórek */
+}
+
+.scrabble-board td {
+    width: 40px; 
+    height: 40px; 
+    border: 1px solid #ccc;
+    text-align: center;
+    vertical-align: middle;
+    position: relative;
+    font-size: 10px;
+    padding: 0; /* Usunięcie paddingu z komórek */
+}
+
+/* Styl dla Nagłówków Kolumn (Litery A-O) */
+.scrabble-board tr:first-child td {
+    height: 20px; 
+    width: 40px; 
+    font-weight: bold;
+    background-color: #f0f0f0;
+    border: none;
+    line-height: 20px;
+    vertical-align: middle;
+}
+/* Poprawka dla pierwszej, pustej komórki (nagłówek/wiersz) */
+.scrabble-board tr:first-child td:first-child {
+    width: 20px; 
+    background-color: white;
+    border: none;
+}
+
+/* Styl dla Nagłówków Wierszy (Cyfry 1-15) */
+.scrabble-board tr td:first-child {
+    width: 20px; /* Stała szerokość nagłówka wiersza */
+    height: 40px; 
+    font-weight: bold;
+    background-color: #f0f0f0;
+    border: none;
+    line-height: 40px; /* Wyśrodkowanie w pionie */
+    text-align: center; /* Wyśrodkowanie w poziomie */
+}
+
+/* Kolory Premii */
+.DL { background-color: #a4c6f7; color: #333; } /* Jasnoniebieski - Podwójna Litera */
+.TL { background-color: #5d98e7; color: white; } /* Ciemnoniebieski - Potrójna Litera */
+.DW { background-color: #ff9999; color: #333; } /* Różowy - Podwójne Słowo */
+.TW { background-color: #ff5252; color: white; } /* Czerwony - Potrójne Słowo */
+.center { background-color: #ffdddd; } /* Centrum */
+
+/* Styl dla płytek z literami (płytka już na planszy) */
+.scrabble-board strong {
+    font-size: 14px;
+    color: black;
+    /* Dodajemy tło imitujące płytkę */
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-color: #f2e2b9; /* Kolor beżowy płytki */
+    border: 1px solid #d4c098;
+    line-height: 38px; /* Wyrównanie w pionie wewnątrz "płytki" */
+}
+
+/* Ukrycie tekstu premii, gdy jest płytka na polu */
+.scrabble-board td strong + span {
+    display: none;
+}
