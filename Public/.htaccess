@@ -1,0 +1,3 @@
+# For Apache deployment under a directory, ensure PHP is enabled.
+Options -Indexes
+DirectoryIndex index.php
