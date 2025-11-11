@@ -1,6 +1,5 @@
 
-Kontynuj budowę aplikacji ScrabbleScore do rejestracji przebiegu gry w scrabble.
-Aktualny stan rozwoju aplikacji dostępny jest pod adresem Github https://github.com/ZemAno25/ScrabbleScore
+
 Napisz program do zapisu przebiegu rozgrywki dwóch zawodników w scrabble. Przy pisaniu program wykorzystywane ma być PHP Version 8.1.2-1ubuntu2.22, PostgreSQL 14 i Apache 2.0.
 Przy pisaniu kodu staraj się wykorzystać lub adoptować rozwiązania opracowane przy budowie programu QACKLE, którego kod jest dostępny na stronie https://github.com/quackle/quackle
 ScrabbleScore w odróżnienieu od QUACKLE ogranicza się tylko do rejestracji rozgrywek w Scrabble i automatycznego liczeniu punktów.
