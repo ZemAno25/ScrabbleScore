@@ -23,8 +23,8 @@ body {
 /* Główne kontenery */
 
 .container {
-    width: 100%;          /* pełna szerokość okna */
-    max-width: none;      /* żadnego ograniczenia */
+    width: 100%;         /* użyj całej szerokości okna */
+    max-width: none;
     margin: 0;
     padding: 24px 32px;
 }
@@ -163,45 +163,22 @@ select:focus {
     gap: 16px;
 }
 
-/* UKŁAD STRONY GRY (play.php)
-   Zakładam, że blok z ruchami i blok z planszą są kolejnymi kartami
-   wewnątrz kontenera – opakujemy je w sztuczny „flex” przez :nth-of-type. */
+/* UKŁAD STRONY GRY (play.php) – dwie kolumny: ruchy + plansza */
 
 .game-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
     gap: 24px;
     align-items: flex-start;
 }
 
-/* Gdy play.php nie używa .game-layout, wciąż chcemy szeroki układ.
-   Dlatego jeśli w kontenerze są dwie karty obok siebie (Ruchy/Plansza),
-   ułóż je w jednej linii. */
-
-.container.play-view {
-    display: flex;
-    flex-direction: column;
-}
-
-.container.play-view .cards-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: 24px;
-    align-items: flex-start;
-}
-
-/* Jeśli w HTML nie ma .play-view/.cards-row,
-   poniższe wciąż poprawia czytelność dzięki overflow-x. */
+/* Jeżeli play.php nie używa .game-layout, wciąż chcemy przewijanie tabeli */
 
 .moves-card {
-    overflow-x: auto;   /* poziome przewijanie tabeli ruchów */
+    overflow-x: auto;   /* poziome przewijanie tabeli ruchów, nic się nie zawija */
 }
 
-.board-card {
-    overflow: visible;
-}
-
-/* Tabela ruchów i tabele ogólnie */
+/* Tabele */
 
 table {
     width: 100%;
@@ -215,7 +192,7 @@ td {
     padding: 4px 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     text-align: left;
-    white-space: nowrap;          /* brak zawijania wierszy */
+    white-space: nowrap;          /* brak zawijania linii w tabelach */
 }
 
 th {
@@ -229,44 +206,48 @@ tr:nth-child(even) td {
     background-color: rgba(255, 255, 255, 0.02);
 }
 
-/* kolumna „Zapis” może być szeroka – reszta dopasuje się sama */
+/* kolumna „Zapis” może być szeroka */
 
 .moves-table th:nth-child(3),
 .moves-table td:nth-child(3) {
     min-width: 420px;
 }
 
-/* Plansza SCRABBLE */
+/* Plansza SCRABBLE – PROSTA, PEWNA WERSJA */
+
+/* kontener planszy */
 
 .board-wrapper {
     display: inline-block;
     padding: 10px;
     border-radius: 14px;
-    background: radial-gradient(circle at top, #364454, #131923 70%);
+    background: #1a2933;
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.7);
 }
 
-/* tabela .board powinna mieć 15×15 pól */
+/* tabela z planszą */
 
 .board {
     border-collapse: collapse;
-    background-color: #184056; /* tło „filcu” pod płytkami */
     margin: 0 auto;
 }
 
+/* pojedyncze pole – kratka 15×15, wyraźne obramowanie */
+
 .board td {
-    width: 48px;                /* jeszcze większa plansza */
-    height: 48px;
+    width: 40px;
+    height: 40px;
     text-align: center;
     vertical-align: middle;
+    border: 1px solid rgba(0, 0, 0, 0.7);
+    background-color: #184056;    /* domyślne tło pola */
+    color: #f5f7ff;               /* domyślny kolor liter */
     font-weight: 600;
-    font-size: 20px;
-    border: 1px solid rgba(0, 0, 0, 0.75);
-    position: relative;
+    font-size: 18px;
     padding: 0;
 }
 
-/* podstawowy wygląd pustego pola */
+/* puste pola (jeśli masz osobną klasę) */
 
 .board td.empty {
     background-color: #1c2b35;
@@ -275,56 +256,41 @@ tr:nth-child(even) td {
     font-weight: 500;
 }
 
-/* płytka z literą */
+/* Standardowy kafelek z literą (jeśli używasz klasy tile) */
 
 .board td.tile {
-    background: linear-gradient(145deg, #f6e0b6, #c7a267);
+    background-color: #f6e0b6;
     color: #222;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-/* Premie – kolory zbliżone do planszy Mattela */
+/* Premie – jeśli w HTML są klasy .tw/.dw/.tl/.dl/.center,
+   nadamy im kolory zbliżone do planszy Mattela. */
 
 .board td.tw {
-    /* potrójne słowo – ciemny czerwony */
-    background: linear-gradient(145deg, #8b1a1a, #c62828);
+    background-color: #c62828;   /* potrójne słowo – ciemna czerwień */
     color: #fff;
 }
 
 .board td.dw {
-    /* podwójne słowo – jasny róż/czerwony */
-    background: linear-gradient(145deg, #f06292, #ec407a);
+    background-color: #ef5350;   /* podwójne słowo – jaśniejszy czerwony */
     color: #1b0b0b;
 }
 
 .board td.tl {
-    /* potrójna litera – mocny niebieski */
-    background: linear-gradient(145deg, #1a3d8f, #1565c0);
+    background-color: #1565c0;   /* potrójna litera – niebieski */
     color: #e3f2fd;
 }
 
 .board td.dl {
-    /* podwójna litera – jasny niebieski */
-    background: linear-gradient(145deg, #4fc3f7, #29b6f6);
+    background-color: #29b6f6;   /* podwójna litera – jasny niebieski */
     color: #07243a;
 }
 
 .board td.center {
-    /* środek z gwiazdką */
-    background: radial-gradient(circle at center, #ffd54f, #f9a825 70%);
+    background-color: #f9a825;   /* środek z gwiazdką */
     color: #3e2723;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
-}
-
-/* Płytka stojąca na premiowanym polu */
-
-.board td.tw.tile,
-.board td.dw.tile,
-.board td.tl.tile,
-.board td.dl.tile,
-.board td.center.tile {
-    background-blend-mode: multiply;
 }
 
 /* opis pod planszą */
@@ -342,7 +308,6 @@ tr:nth-child(even) td {
         padding: 16px;
     }
 
-    .container.play-view .cards-row,
     .game-layout {
         grid-template-columns: 1fr;
     }
