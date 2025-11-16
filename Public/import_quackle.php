@@ -25,7 +25,6 @@ function normalizeDatetimeFromInput(?string $val): ?string
     if ($val === '') {
         return null;
     }
-    // Oczekujemy formatu HTML5 datetime-local: YYYY-MM-DDTHH:MM
     $val = str_replace('T', ' ', $val);
     if (strlen($val) === 16) {
         $val .= ':00';
@@ -35,7 +34,6 @@ function normalizeDatetimeFromInput(?string $val): ?string
 
 function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $startedAt, string $sourceHash): int
 {
-    // Blokada ponownego importu tej samej gry
     if ($sourceHash !== '') {
         $existing = GameRepo::findBySourceHash($sourceHash);
         if ($existing) {
@@ -45,7 +43,6 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
         }
     }
 
-    // Ustalenie i normalizacja nicków do WIELKICH LITER
     $p1Name = $game->player1Name ?: 'GRACZ1';
     $p2Name = $game->player2Name ?: 'GRACZ2';
 
@@ -59,7 +56,6 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
     $p1Id = PlayerRepo::findOrCreate($p1Name);
     $p2Id = PlayerRepo::findOrCreate($p2Name);
 
-    // Tworzymy grę z oznaczeniem trybu punktacji i hash-em źródła
     $gameId = GameRepo::create($p1Id, $p2Id, $mode, $startedAt, $sourceHash);
 
     $board  = new Board();
@@ -67,7 +63,6 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
 
     $moveNo = 1;
 
-    // Mapowanie nazwy gracza (wielkie litery) na ID
     $map = [
         $p1Name => $p1Id,
         $p2Name => $p2Id,
@@ -97,12 +92,10 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
 
             $internalWord = QuackleImporter::convertWordToInternal($board, $m->position, $m->word);
 
-            // Aktualizacja planszy – ignorujemy wynik, ufamy punktacji Quackle
             try {
                 $scorer->placeAndScore($m->position, $internalWord);
             } catch (Throwable $e) {
-                // Przy imporcie nie zatrzymujemy się na błędzie planszy,
-                // można by logować $e->getMessage().
+                // Można zalogować błąd, ale nie przerywamy importu
             }
 
             $data['position'] = $m->position;
@@ -116,7 +109,6 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
             $data['rack'] = $m->rack;
             $data['type'] = 'PASS';
         } elseif ($m->type === 'ENDGAME') {
-            // Korekta końcowa – nie zmieniamy planszy, jedynie zapisujemy informację
             $data['word'] = $m->endRack ? '(' . $m->endRack . ')' : null;
             $data['type'] = 'ENDGAME';
         }
@@ -127,9 +119,7 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
     return $gameId;
 }
 
-// Obsługa formularzy
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Drugi etap: import z podglądu (gcg_text + parametry)
     if (isset($_POST['import_mode'], $_POST['gcg_text'])) {
         $mode = $_POST['import_mode'] === 'PFS' ? 'PFS' : 'QUACKLE';
         $encodedText = $_POST['gcg_text'];
@@ -142,7 +132,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $game = QuackleImporter::parseGcg($contents);
 
-                // Nadpisanie imion/nicków graczy z formularza
                 $formP1 = normalizeNickUpper($_POST['player1'] ?? '');
                 $formP2 = normalizeNickUpper($_POST['player2'] ?? '');
                 if ($formP1 !== '') {
@@ -154,12 +143,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $hash = hash('sha256', $contents);
                 $importedGameId = importQuackleGameToDatabase($game, $mode, $startedAt, $hash);
+            } catch (PDOException $e) {
+                $error = 'Błąd bazy danych podczas importu: ' . $e->getMessage();
             } catch (Throwable $e) {
                 $error = 'Błąd importu: ' . $e->getMessage();
             }
         }
     } elseif (isset($_FILES['gcgfile'])) {
-        // Pierwszy etap: wczytanie pliku i podgląd
         if ($_FILES['gcgfile']['error'] !== UPLOAD_ERR_OK) {
             $error = 'Błąd uploadu pliku.';
         } else {
@@ -168,24 +158,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Nie udało się odczytać pliku.';
             } else {
                 try {
+                    // Parsowanie pliku – bez bazy
                     $previewGame = QuackleImporter::parseGcg($contents);
                     $encoded     = base64_encode($contents);
 
-                    // Ustalenie nicków w wersji UPPERCASE
                     $rawP1 = $previewGame->player1Name ?? 'GRACZ1';
                     $rawP2 = $previewGame->player2Name ?? 'GRACZ2';
 
                     $upP1 = normalizeNickUpper($rawP1);
                     $upP2 = normalizeNickUpper($rawP2);
-
-                    $existsP1 = PlayerRepo::findByNick($upP1) !== null;
-                    $existsP2 = PlayerRepo::findByNick($upP2) !== null;
-
-                    // Hash pliku do wykrywania duplikatów
-                    $hash = hash('sha256', $contents);
-                    $duplicateGame = GameRepo::findBySourceHash($hash);
                 } catch (Throwable $e) {
-                    $error = 'Błąd parsowania: ' . $e->getMessage();
+                    $error = 'Błąd parsowania pliku: ' . $e->getMessage();
+                }
+
+                if ($previewGame && !$error) {
+                    // Sprawdzenia w bazie oddzielnie, żeby mieć osobny komunikat w razie problemów z DB
+                    try {
+                        $existsP1 = PlayerRepo::findByNick($upP1) !== null;
+                        $existsP2 = PlayerRepo::findByNick($upP2) !== null;
+
+                        $hash = hash('sha256', $contents);
+                        $duplicateGame = GameRepo::findBySourceHash($hash);
+                    } catch (PDOException $e) {
+                        $error = 'Błąd połączenia z bazą podczas sprawdzania graczy lub duplikatu: ' . $e->getMessage();
+                    }
                 }
             }
         }
@@ -305,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="grid">
                         <div>
                             <label>Gracz 1 (nick w bazie)</label>
-                            <input name="player1" value="<?= htmlspecialchars($upP1 ?? '') ?>">
+                            <input name="player1" value="<?= htmlspecialchars(normalizeNickUpper($p1)) ?>">
                             <?php if ($upP1 !== null): ?>
                                 <?php if ($existsP1): ?>
                                     <div class="small success">
@@ -320,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <div>
                             <label>Gracz 2 (nick w bazie)</label>
-                            <input name="player2" value="<?= htmlspecialchars($upP2 ?? '') ?>">
+                            <input name="player2" value="<?= htmlspecialchars(normalizeNickUpper($p2)) ?>">
                             <?php if ($upP2 !== null): ?>
                                 <?php if ($existsP2): ?>
                                     <div class="small success">
