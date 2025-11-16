@@ -1,21 +1,339 @@
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;background:#0b0e10;color:#e6edf3;margin:0}
-.container{max-width:1000px;margin:40px auto;padding:16px}
-h1{font-size:28px;margin:0 0 16px}
-.menu{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-.btn{display:block;padding:12px 16px;background:#1f6feb;color:white;text-decoration:none;border-radius:10px;text-align:center}
-.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin:12px 0}
-label{display:block;margin:8px 0 4px}
-input,select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #30363d;background:#0b0e10;color:#e6edf3}
-table{width:100%;border-collapse:collapse}
-th,td{border-bottom:1px solid #30363d;padding:8px;text-align:left}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.board{display:grid;grid-template-columns:repeat(15,28px);gap:2px;justify-content:start}
-.cell{width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:#0e1116;border:1px solid #30363d;border-radius:4px;font-weight:600}
-.cell.pl2{background:#0a3069}
-.cell.pl3{background:#0c2d6b}
-.cell.ps2{background:#5a1e02}
-.cell.ps3{background:#6e0101}
-.cell.tile{background:#c2a36b;color:#000;border-color:#b69150}
-.small{font-size:12px;color:#abb2bf}
-.error{color:#ff6b6b}
-.success{color:#2ea043}
+/* Reset i baza */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #05070b;
+    color: #f5f7ff;
+}
+
+/* Główne kontenery */
+
+.container {
+    max-width: 1600px;           /* szerzej – lepsze wykorzystanie ekranu */
+    margin: 0 auto;
+    padding: 24px 32px;
+}
+
+h1,
+h2,
+h3 {
+    margin-top: 0;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+h1 {
+    font-size: 32px;
+    margin-bottom: 24px;
+}
+
+h2 {
+    font-size: 22px;
+    margin-bottom: 16px;
+}
+
+h3 {
+    font-size: 18px;
+    margin: 16px 0 8px;
+}
+
+/* Karty / sekcje */
+
+.card {
+    background: radial-gradient(circle at top left, #1b2735, #0b1018 60%);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    margin-bottom: 16px;
+}
+
+.card.error {
+    border-color: #ff5252;
+    background: radial-gradient(circle at top left, #3b1116, #120408 60%);
+    color: #ffd6d6;
+}
+
+.card.success {
+    border-color: #32d296;
+    background: radial-gradient(circle at top left, #113b2b, #04120c 60%);
+    color: #d8ffef;
+}
+
+/* Przyciski */
+
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(135deg, #2f80ed, #56ccf2);
+    color: #f5f7ff;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 0.08s ease-out, box-shadow 0.08s ease-out,
+        background 0.12s ease-out;
+    box-shadow: 0 8px 20px rgba(15, 76, 129, 0.6);
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(12, 80, 160, 0.7);
+}
+
+.btn:active {
+    transform: translateY(0);
+    box-shadow: 0 6px 16px rgba(12, 80, 160, 0.6);
+}
+
+/* Formularze */
+
+label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: block;
+    margin-bottom: 4px;
+    opacity: 0.85;
+}
+
+input[type="text"],
+input[type="datetime-local"],
+input[type="number"],
+select {
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background-color: #0b1018;
+    color: #f5f7ff;
+    font-size: 14px;
+}
+
+input[type="file"] {
+    margin-top: 4px;
+    font-size: 14px;
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: #56ccf2;
+    box-shadow: 0 0 0 1px rgba(86, 204, 242, 0.4);
+}
+
+/* Drobne teksty */
+
+.small {
+    font-size: 12px;
+    opacity: 0.85;
+    margin-top: 4px;
+}
+
+.small.success {
+    color: #9ff5cf;
+}
+
+.small.error {
+    color: #ff9a9a;
+}
+
+/* Siatka pomocnicza */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+/* UKŁAD STRONY GRY (play.php) */
+
+.game-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: flex-start;
+}
+
+/* Karta z ruchami i karta z planszą */
+
+.moves-card,
+.board-card {
+    height: 100%;
+}
+
+/* Tabela ruchów i tabele ogólnie */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;        /* gwarancja, że kolumny się nie ściskają losowo */
+    font-size: 14px;
+}
+
+th,
+td {
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    text-align: left;
+    white-space: nowrap;        /* brak zawijania linii */
+    overflow: hidden;
+    text-overflow: ellipsis;    /* nadmiar „obcinany” z … zamiast łamać wiersz */
+}
+
+th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    opacity: 0.9;
+}
+
+tr:nth-child(even) td {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* W typowej tabeli ruchów – kolumny: # | Gracz | Zapis | +pkt | Σ
+   zostawiamy większą szerokość dla „Zapis”. */
+
+.moves-table th:nth-child(3),
+.moves-table td:nth-child(3) {
+    max-width: 480px;
+}
+
+/* Plansza SCRABBLE */
+
+.board-wrapper {
+    display: inline-block;
+    padding: 10px;
+    border-radius: 14px;
+    background: radial-gradient(circle at top, #364454, #131923 70%);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.7);
+}
+
+/* tabela .board powinna mieć 15×15 pól */
+
+.board {
+    border-collapse: collapse;
+    background-color: #184056; /* tło „filcu” pod płytkami */
+    margin: 0 auto;
+}
+
+/* pojedyncze pole */
+
+.board td {
+    width: 40px;               /* większa plansza */
+    height: 40px;
+    text-align: center;
+    vertical-align: middle;
+    font-weight: 600;
+    font-size: 18px;
+    border: 1px solid rgba(0, 0, 0, 0.7);
+    position: relative;
+    box-sizing: border-box;
+    padding: 0;
+}
+
+/* podstawowy wygląd pustego pola */
+
+.board td.empty {
+    background-color: #1c2b35;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* płytka z literą */
+
+.board td.tile {
+    background: linear-gradient(145deg, #f6e0b6, #c7a267);
+    color: #222;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* Premie – nazwy klas przyjęte na bazie wcześniejszych odpowiedzi:
+   .tw – triple word, .dw – double word,
+   .tl – triple letter, .dl – double letter,
+   .center – pole startowe z gwiazdką. */
+
+.board td.tw {
+    background: linear-gradient(145deg, #8b1a1a, #c62828);
+    color: #fff;
+}
+
+.board td.dw {
+    background: linear-gradient(145deg, #f06292, #ec407a);
+    color: #1b0b0b;
+}
+
+.board td.tl {
+    background: linear-gradient(145deg, #1a3d8f, #1565c0);
+    color: #e3f2fd;
+}
+
+.board td.dl {
+    background: linear-gradient(145deg, #4fc3f7, #29b6f6);
+    color: #07243a;
+}
+
+.board td.center {
+    background: radial-gradient(circle at center, #ffd54f, #f9a825 70%);
+    color: #3e2723;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+/* Łączenie klas: płytka stojąca na premiowanym polu */
+
+.board td.tw.tile,
+.board td.dw.tile,
+.board td.tl.tile,
+.board td.dl.tile,
+.board td.center.tile {
+    background-blend-mode: multiply;
+}
+
+/* opis pod planszą */
+
+.board-legend {
+    margin-top: 8px;
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+/* Layout responsywny – na węższych ekranach plansza pod ruchami */
+
+@media (max-width: 1100px) {
+    .container {
+        padding: 16px;
+    }
+
+    .game-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .board-wrapper {
+        max-width: 100%;
+    }
+
+    .board td {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+}
