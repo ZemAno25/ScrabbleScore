@@ -5,8 +5,22 @@ require_once __DIR__ . '/Database.php';
 
 class PlayerRepo
 {
+    private static function normalizeNick(string $nick): string
+    {
+        $nick = trim($nick);
+        if ($nick === '') {
+            return '';
+        }
+        return mb_strtoupper($nick, 'UTF-8');
+    }
+
     public static function create(string $nick): int
     {
+        $nick = self::normalizeNick($nick);
+        if ($nick === '') {
+            throw new InvalidArgumentException('Pusty nick gracza.');
+        }
+
         $pdo = Database::get();
         $stmt = $pdo->prepare('INSERT INTO players(nick, created_at) VALUES(?, now()) RETURNING id');
         $stmt->execute([$nick]);
@@ -20,6 +34,11 @@ class PlayerRepo
 
     public static function findByNick(string $nick): ?array
     {
+        $nick = self::normalizeNick($nick);
+        if ($nick === '') {
+            return null;
+        }
+
         $stmt = Database::get()->prepare('SELECT * FROM players WHERE nick = ?');
         $stmt->execute([$nick]);
         $row = $stmt->fetch();
@@ -28,10 +47,11 @@ class PlayerRepo
 
     public static function findOrCreate(string $nick): int
     {
-        $nick = trim($nick);
+        $nick = self::normalizeNick($nick);
         if ($nick === '') {
             throw new InvalidArgumentException('Pusty nick gracza.');
         }
+
         $existing = self::findByNick($nick);
         if ($existing) {
             return (int)$existing['id'];
@@ -42,14 +62,37 @@ class PlayerRepo
 
 class GameRepo
 {
-    public static function create(int $p1, int $p2, string $mode = 'PFS'): int
-    {
+    public static function create(
+        int $p1,
+        int $p2,
+        string $mode = 'PFS',
+        ?string $startedAt = null,
+        ?string $sourceHash = null
+    ): int {
         $pdo = Database::get();
         $stmt = $pdo->prepare(
-            'INSERT INTO games(player1_id, player2_id, started_at, scoring_mode)
-             VALUES(?, ?, now(), ?) RETURNING id'
+            'INSERT INTO games(
+                player1_id,
+                player2_id,
+                started_at,
+                scoring_mode,
+                source_hash
+             ) VALUES(
+                :p1,
+                :p2,
+                COALESCE(:started_at, now()),
+                :mode,
+                :source_hash
+             )
+             RETURNING id'
         );
-        $stmt->execute([$p1, $p2, $mode]);
+        $stmt->execute([
+            'p1'          => $p1,
+            'p2'          => $p2,
+            'started_at'  => $startedAt,
+            'mode'        => $mode,
+            'source_hash' => $sourceHash,
+        ]);
         return (int)$stmt->fetchColumn();
     }
 
@@ -74,6 +117,18 @@ class GameRepo
              ORDER BY g.id DESC'
         )->fetchAll();
     }
+
+    public static function findBySourceHash(string $hash): ?array
+    {
+        $hash = trim($hash);
+        if ($hash === '') {
+            return null;
+        }
+        $stmt = Database::get()->prepare('SELECT * FROM games WHERE source_hash = ?');
+        $stmt->execute([$hash]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
 }
 
 class MoveRepo
@@ -83,13 +138,29 @@ class MoveRepo
         $pdo = Database::get();
         $stmt = $pdo->prepare(
             'INSERT INTO moves(
-                game_id, move_no, player_id,
-                raw_input, type, position, word, rack,
-                score, cum_score, created_at
+                game_id,
+                move_no,
+                player_id,
+                raw_input,
+                type,
+                position,
+                word,
+                rack,
+                score,
+                cum_score,
+                created_at
              ) VALUES(
-                :game_id, :move_no, :player_id,
-                :raw_input, :type, :position, :word, :rack,
-                :score, :cum_score, now()
+                :game_id,
+                :move_no,
+                :player_id,
+                :raw_input,
+                :type,
+                :position,
+                :word,
+                :rack,
+                :score,
+                :cum_score,
+                now()
              )
              RETURNING id'
         );

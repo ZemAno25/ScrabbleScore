@@ -4,35 +4,77 @@ require_once __DIR__ . '/../src/Board.php';
 require_once __DIR__ . '/../src/Scorer.php';
 require_once __DIR__ . '/../src/QuackleImporter.php';
 
-$error = null;
-$previewGame = null;
+$error          = null;
+$previewGame    = null;
 $importedGameId = null;
+$encoded        = null;
+$defaultDateTime = date('Y-m-d\TH:i');
+$upP1 = $upP2 = null;
+$existsP1 = $existsP2 = false;
+$duplicateGame = null;
 
-function importQuackleGameToDatabase(QuackleGame $game, string $mode): int
+function normalizeNickUpper(string $nick): string
 {
-    // Ustalenie nazw graczy
+    $nick = trim($nick);
+    return $nick === '' ? '' : mb_strtoupper($nick, 'UTF-8');
+}
+
+function normalizeDatetimeFromInput(?string $val): ?string
+{
+    $val = trim((string)$val);
+    if ($val === '') {
+        return null;
+    }
+    // Oczekujemy formatu HTML5 datetime-local: YYYY-MM-DDTHH:MM
+    $val = str_replace('T', ' ', $val);
+    if (strlen($val) === 16) {
+        $val .= ':00';
+    }
+    return $val;
+}
+
+function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $startedAt, string $sourceHash): int
+{
+    // Blokada ponownego importu tej samej gry
+    if ($sourceHash !== '') {
+        $existing = GameRepo::findBySourceHash($sourceHash);
+        if ($existing) {
+            throw new RuntimeException(
+                'Ta partia została już zaimportowana jako gra #' . $existing['id'] . '.'
+            );
+        }
+    }
+
+    // Ustalenie i normalizacja nicków do WIELKICH LITER
     $p1Name = $game->player1Name ?: 'GRACZ1';
     $p2Name = $game->player2Name ?: 'GRACZ2';
+
+    $p1Name = normalizeNickUpper($p1Name);
+    $p2Name = normalizeNickUpper($p2Name);
+
+    if ($p1Name === '' || $p2Name === '') {
+        throw new RuntimeException('Nick gracza nie może być pusty.');
+    }
 
     $p1Id = PlayerRepo::findOrCreate($p1Name);
     $p2Id = PlayerRepo::findOrCreate($p2Name);
 
-    // Tworzymy grę z oznaczeniem trybu punktacji
-    $gameId = GameRepo::create($p1Id, $p2Id, $mode);
+    // Tworzymy grę z oznaczeniem trybu punktacji i hash-em źródła
+    $gameId = GameRepo::create($p1Id, $p2Id, $mode, $startedAt, $sourceHash);
 
-    $board = new Board();
+    $board  = new Board();
     $scorer = new Scorer($board);
 
     $moveNo = 1;
 
-    // Mapowanie nazwy gracza (bez względu na wielkość liter) na ID
+    // Mapowanie nazwy gracza (wielkie litery) na ID
     $map = [
-        mb_strtoupper($p1Name, 'UTF-8') => $p1Id,
-        mb_strtoupper($p2Name, 'UTF-8') => $p2Id,
+        $p1Name => $p1Id,
+        $p2Name => $p2Id,
     ];
 
     foreach ($game->moves as $m) {
-        $playerKey = mb_strtoupper($m->playerName, 'UTF-8');
+        $playerKey = normalizeNickUpper($m->playerName);
         $playerId  = $map[$playerKey] ?? $p1Id;
 
         $data = [
@@ -59,7 +101,8 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode): int
             try {
                 $scorer->placeAndScore($m->position, $internalWord);
             } catch (Throwable $e) {
-                // Przy imporcie nie zatrzymujemy się na błędzie planszy, ale warto byłoby logować
+                // Przy imporcie nie zatrzymujemy się na błędzie planszy,
+                // można by logować $e->getMessage().
             }
 
             $data['position'] = $m->position;
@@ -86,17 +129,31 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode): int
 
 // Obsługa formularzy
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Import z ukrytego gcg_text (Base64) po podglądzie
+    // Drugi etap: import z podglądu (gcg_text + parametry)
     if (isset($_POST['import_mode'], $_POST['gcg_text'])) {
         $mode = $_POST['import_mode'] === 'PFS' ? 'PFS' : 'QUACKLE';
-        $encoded = $_POST['gcg_text'];
-        $contents = base64_decode($encoded, true);
+        $encodedText = $_POST['gcg_text'];
+        $contents = base64_decode($encodedText, true);
         if ($contents === false) {
             $error = 'Nie udało się odkodować danych gry.';
         } else {
+            $startedAt = normalizeDatetimeFromInput($_POST['game_datetime'] ?? null);
+
             try {
                 $game = QuackleImporter::parseGcg($contents);
-                $importedGameId = importQuackleGameToDatabase($game, $mode);
+
+                // Nadpisanie imion/nicków graczy z formularza
+                $formP1 = normalizeNickUpper($_POST['player1'] ?? '');
+                $formP2 = normalizeNickUpper($_POST['player2'] ?? '');
+                if ($formP1 !== '') {
+                    $game->player1Name = $formP1;
+                }
+                if ($formP2 !== '') {
+                    $game->player2Name = $formP2;
+                }
+
+                $hash = hash('sha256', $contents);
+                $importedGameId = importQuackleGameToDatabase($game, $mode, $startedAt, $hash);
             } catch (Throwable $e) {
                 $error = 'Błąd importu: ' . $e->getMessage();
             }
@@ -112,7 +169,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     $previewGame = QuackleImporter::parseGcg($contents);
-                    $encoded = base64_encode($contents);
+                    $encoded     = base64_encode($contents);
+
+                    // Ustalenie nicków w wersji UPPERCASE
+                    $rawP1 = $previewGame->player1Name ?? 'GRACZ1';
+                    $rawP2 = $previewGame->player2Name ?? 'GRACZ2';
+
+                    $upP1 = normalizeNickUpper($rawP1);
+                    $upP2 = normalizeNickUpper($rawP2);
+
+                    $existsP1 = PlayerRepo::findByNick($upP1) !== null;
+                    $existsP2 = PlayerRepo::findByNick($upP2) !== null;
+
+                    // Hash pliku do wykrywania duplikatów
+                    $hash = hash('sha256', $contents);
+                    $duplicateGame = GameRepo::findBySourceHash($hash);
                 } catch (Throwable $e) {
                     $error = 'Błąd parsowania: ' . $e->getMessage();
                 }
@@ -154,16 +225,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($previewGame): ?>
         <div class="card">
             <?php
-            $p1 = $previewGame->player1Name ?? 'gracz1';
-            $p2 = $previewGame->player2Name ?? 'gracz2';
+            $p1 = $previewGame->player1Name ?? 'GRACZ1';
+            $p2 = $previewGame->player2Name ?? 'GRACZ2';
             $finalScores = [];
             foreach ($previewGame->moves as $m) {
                 $finalScores[$m->playerName] = $m->total;
             }
             ?>
             <h2>Podgląd pliku</h2>
-            <p>Gracz 1: <strong><?= htmlspecialchars($p1) ?></strong></p>
-            <p>Gracz 2: <strong><?= htmlspecialchars($p2) ?></strong></p>
+            <p>Gracz 1 z pliku: <strong><?= htmlspecialchars($p1) ?></strong></p>
+            <p>Gracz 2 z pliku: <strong><?= htmlspecialchars($p2) ?></strong></p>
             <p>Liczba ruchów: <?= count($previewGame->moves) ?></p>
 
             <h3>Ruchy z pliku</h3>
@@ -214,17 +285,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Według zasad PFS ta korekta nie jest osobnym ruchem, ale matematycznie wyniki są takie same.
             </p>
 
-            <h3>Import do bazy</h3>
-            <form method="post">
-                <input type="hidden" name="gcg_text"
-                       value="<?= htmlspecialchars($encoded ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-                <label>Tryb zapisu gry</label>
-                <select name="import_mode">
-                    <option value="QUACKLE">Quackle (z ruchem ENDGAME)</option>
-                    <option value="PFS">PFS (zasady federacji, oznaczone w grze)</option>
-                </select>
-                <button class="btn" style="margin-top:8px">Importuj do bazy</button>
-            </form>
+            <?php if ($duplicateGame): ?>
+                <div class="card error">
+                    <p>Ta partia została już wcześniej zaimportowana jako gra
+                        <strong>#<?= htmlspecialchars($duplicateGame['id']) ?></strong>.
+                        Ponowny import jest zablokowany.
+                    </p>
+                </div>
+            <?php else: ?>
+                <h3>Import do bazy</h3>
+                <form method="post">
+                    <input type="hidden" name="gcg_text"
+                           value="<?= htmlspecialchars($encoded ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+
+                    <label>Data i godzina gry</label>
+                    <input type="datetime-local" name="game_datetime"
+                           value="<?= htmlspecialchars($defaultDateTime) ?>">
+
+                    <div class="grid">
+                        <div>
+                            <label>Gracz 1 (nick w bazie)</label>
+                            <input name="player1" value="<?= htmlspecialchars($upP1 ?? '') ?>">
+                            <?php if ($upP1 !== null): ?>
+                                <?php if ($existsP1): ?>
+                                    <div class="small success">
+                                        Gracz <?= htmlspecialchars($upP1) ?> jest już zarejestrowany.
+                                    </div>
+                                <?php else: ?>
+                                    <div class="small error">
+                                        Gracz <?= htmlspecialchars($upP1) ?> nie jest zarejestrowany – zostanie dodany.
+                                    </div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
+                        <div>
+                            <label>Gracz 2 (nick w bazie)</label>
+                            <input name="player2" value="<?= htmlspecialchars($upP2 ?? '') ?>">
+                            <?php if ($upP2 !== null): ?>
+                                <?php if ($existsP2): ?>
+                                    <div class="small success">
+                                        Gracz <?= htmlspecialchars($upP2) ?> jest już zarejestrowany.
+                                    </div>
+                                <?php else: ?>
+                                    <div class="small error">
+                                        Gracz <?= htmlspecialchars($upP2) ?> nie jest zarejestrowany – zostanie dodany.
+                                    </div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <label>Tryb zapisu gry</label>
+                    <select name="import_mode">
+                        <option value="QUACKLE">Quackle (z ruchem ENDGAME)</option>
+                        <option value="PFS">PFS (zasady federacji, oznaczone w grze)</option>
+                    </select>
+
+                    <button class="btn" style="margin-top:8px">Importuj do bazy</button>
+                </form>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 

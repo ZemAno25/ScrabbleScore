@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS games (
     player1_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
     player2_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
     started_at TIMESTAMP NOT NULL DEFAULT now(),
-    scoring_mode VARCHAR(20) NOT NULL DEFAULT 'PFS' -- 'PFS' lub 'QUACKLE'
+    scoring_mode VARCHAR(20) NOT NULL DEFAULT 'PFS', -- 'PFS' lub 'QUACKLE'
+    source_hash VARCHAR(64)
 );
 
 DO $$
@@ -38,3 +39,7 @@ CREATE TABLE IF NOT EXISTS moves (
 );
 
 CREATE INDEX IF NOT EXISTS idx_moves_game ON moves(game_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_hash
+    ON games(source_hash)
+    WHERE source_hash IS NOT NULL;

@@ -5,9 +5,9 @@ return [
     'db' => [
         'dsn' => 'pgsql:host=localhost;port=5432;dbname=scrabblegames',
         'user' => 'scrabble_usr',
-        'pass' => 'K@rta07052025',
+        'pass' => '', //Ustaw hasło!!!
     ],
     'app' => [
-        'base_url' => '', // e.g. '/scrabblescore' if deployed in a subdir
+        'base_url' => '/ScrabbleScore', // e.g. '/scrabblescore' if deployed in a subdir
     ]
 ];
