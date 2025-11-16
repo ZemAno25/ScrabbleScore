@@ -1,4 +1,5 @@
 -- sql/schema.sql
+
 CREATE TABLE IF NOT EXISTS players (
     id SERIAL PRIMARY KEY,
     nick VARCHAR(40) UNIQUE NOT NULL,
@@ -9,10 +10,16 @@ CREATE TABLE IF NOT EXISTS games (
     id SERIAL PRIMARY KEY,
     player1_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
     player2_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
-    started_at TIMESTAMP NOT NULL DEFAULT now()
+    started_at TIMESTAMP NOT NULL DEFAULT now(),
+    scoring_mode VARCHAR(20) NOT NULL DEFAULT 'PFS' -- 'PFS' lub 'QUACKLE'
 );
 
-CREATE TYPE move_type AS ENUM ('PLAY','PASS','EXCHANGE');
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'move_type') THEN
+        CREATE TYPE move_type AS ENUM ('PLAY', 'PASS', 'EXCHANGE', 'ENDGAME');
+    END IF;
+END$$;
 
 CREATE TABLE IF NOT EXISTS moves (
     id SERIAL PRIMARY KEY,
@@ -23,11 +30,11 @@ CREATE TABLE IF NOT EXISTS moves (
     type move_type NOT NULL,
     position VARCHAR(4),
     word TEXT,
-    rack VARCHAR(16),
+    rack VARCHAR(32),
     score INT NOT NULL DEFAULT 0,
     cum_score INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    CONSTRAINT uniq_move UNIQUE(game_id, move_no)
+    CONSTRAINT uniq_move UNIQUE (game_id, move_no)
 );
 
 CREATE INDEX IF NOT EXISTS idx_moves_game ON moves(game_id);
