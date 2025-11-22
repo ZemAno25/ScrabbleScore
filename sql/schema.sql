@@ -43,3 +43,27 @@ CREATE INDEX IF NOT EXISTS idx_moves_game ON moves(game_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_hash
     ON games(source_hash)
     WHERE source_hash IS NOT NULL;
+
+
+-- create_lexicon_words.sql
+-- Tworzy tabelę słownika osps (i innych słowników, jeśli zechcesz).
+
+CREATE TABLE IF NOT EXISTS public.lexicon_words (
+    id           BIGSERIAL PRIMARY KEY,
+    word         TEXT NOT NULL UNIQUE,
+    word_length  SMALLINT NOT NULL,
+    language     VARCHAR(8) NOT NULL DEFAULT 'PL',
+    source       VARCHAR(32) NOT NULL DEFAULT 'OSPS',
+    created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Przyspieszenie wyszukiwania po słowie
+CREATE UNIQUE INDEX IF NOT EXISTS lexicon_words_word_idx
+    ON public.lexicon_words (word);
+
+-- Przyspieszenie zapytań po długości / języku
+CREATE INDEX IF NOT EXISTS lexicon_words_length_idx
+    ON public.lexicon_words (word_length);
+
+CREATE INDEX IF NOT EXISTS lexicon_words_lang_idx
+    ON public.lexicon_words (language, source);
