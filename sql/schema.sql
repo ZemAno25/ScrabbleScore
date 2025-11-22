@@ -1,69 +1,130 @@
--- sql/schema.sql
+-- Table: public.games
 
-CREATE TABLE IF NOT EXISTS players (
-    id SERIAL PRIMARY KEY,
-    nick VARCHAR(40) UNIQUE NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT now()
-);
+-- DROP TABLE IF EXISTS public.games;
 
-CREATE TABLE IF NOT EXISTS games (
-    id SERIAL PRIMARY KEY,
-    player1_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
-    player2_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
-    started_at TIMESTAMP NOT NULL DEFAULT now(),
-    scoring_mode VARCHAR(20) NOT NULL DEFAULT 'PFS', -- 'PFS' lub 'QUACKLE'
-    source_hash VARCHAR(64)
-);
+CREATE TABLE IF NOT EXISTS public.games
+(
+    id integer NOT NULL DEFAULT nextval('games_id_seq'::regclass),
+    player1_id integer NOT NULL,
+    player2_id integer NOT NULL,
+    started_at timestamp without time zone NOT NULL DEFAULT now(),
+    scoring_mode character varying(20) COLLATE pg_catalog."default" NOT NULL DEFAULT 'PFS'::character varying,
+    source_hash character varying(64) COLLATE pg_catalog."default",
+    CONSTRAINT games_pkey PRIMARY KEY (id),
+    CONSTRAINT games_player1_id_fkey FOREIGN KEY (player1_id)
+        REFERENCES public.players (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE RESTRICT,
+    CONSTRAINT games_player2_id_fkey FOREIGN KEY (player2_id)
+        REFERENCES public.players (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE RESTRICT
+)
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'move_type') THEN
-        CREATE TYPE move_type AS ENUM ('PLAY', 'PASS', 'EXCHANGE', 'ENDGAME');
-    END IF;
-END$$;
+TABLESPACE pg_default;
 
-CREATE TABLE IF NOT EXISTS moves (
-    id SERIAL PRIMARY KEY,
-    game_id INT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-    move_no INT NOT NULL,
-    player_id INT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
-    raw_input TEXT NOT NULL,
-    type move_type NOT NULL,
-    position VARCHAR(4),
-    word TEXT,
-    rack VARCHAR(32),
-    score INT NOT NULL DEFAULT 0,
-    cum_score INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT now(),
-    CONSTRAINT uniq_move UNIQUE (game_id, move_no)
-);
+ALTER TABLE IF EXISTS public.games
+    OWNER to postgres;
 
-CREATE INDEX IF NOT EXISTS idx_moves_game ON moves(game_id);
+GRANT ALL ON TABLE public.games TO postgres;
+
+GRANT ALL ON TABLE public.games TO scrabble_usr;
+-- Index: idx_games_source_hash
+
+-- DROP INDEX IF EXISTS public.idx_games_source_hash;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_hash
-    ON games(source_hash)
+    ON public.games USING btree
+    (source_hash COLLATE pg_catalog."default" ASC NULLS LAST)
+    WITH (fillfactor=100, deduplicate_items=True)
+    TABLESPACE pg_default
     WHERE source_hash IS NOT NULL;
 
+-- Table: public.lexicon_words
 
--- create_lexicon_words.sql
--- Tworzy tabelę słownika osps (i innych słowników, jeśli zechcesz).
+-- DROP TABLE IF EXISTS public.lexicon_words;
 
-CREATE TABLE IF NOT EXISTS public.lexicon_words (
-    id           BIGSERIAL PRIMARY KEY,
-    word         TEXT NOT NULL UNIQUE,
-    word_length  SMALLINT NOT NULL,
-    language     VARCHAR(8) NOT NULL DEFAULT 'PL',
-    source       VARCHAR(32) NOT NULL DEFAULT 'OSPS',
-    created_at   TIMESTAMP NOT NULL DEFAULT NOW()
-);
+CREATE TABLE IF NOT EXISTS public.lexicon_words
+(
+    word text COLLATE pg_catalog."default" NOT NULL,
+    CONSTRAINT lexicon_words_pkey PRIMARY KEY (word)
+)
 
--- Przyspieszenie wyszukiwania po słowie
-CREATE UNIQUE INDEX IF NOT EXISTS lexicon_words_word_idx
-    ON public.lexicon_words (word);
+TABLESPACE pg_default;
 
--- Przyspieszenie zapytań po długości / języku
-CREATE INDEX IF NOT EXISTS lexicon_words_length_idx
-    ON public.lexicon_words (word_length);
+ALTER TABLE IF EXISTS public.lexicon_words
+    OWNER to postgres;
 
-CREATE INDEX IF NOT EXISTS lexicon_words_lang_idx
-    ON public.lexicon_words (language, source);
+GRANT ALL ON TABLE public.lexicon_words TO postgres;
+
+GRANT ALL ON TABLE public.lexicon_words TO scrabble_usr;
+
+-- Table: public.moves
+
+-- DROP TABLE IF EXISTS public.moves;
+
+CREATE TABLE IF NOT EXISTS public.moves
+(
+    id integer NOT NULL DEFAULT nextval('moves_id_seq'::regclass),
+    game_id integer NOT NULL,
+    move_no integer NOT NULL,
+    player_id integer NOT NULL,
+    raw_input text COLLATE pg_catalog."default" NOT NULL,
+    type move_type NOT NULL,
+    "position" character varying(4) COLLATE pg_catalog."default",
+    word text COLLATE pg_catalog."default",
+    rack character varying(32) COLLATE pg_catalog."default",
+    score integer NOT NULL DEFAULT 0,
+    cum_score integer NOT NULL DEFAULT 0,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    CONSTRAINT moves_pkey PRIMARY KEY (id),
+    CONSTRAINT uniq_move UNIQUE (game_id, move_no),
+    CONSTRAINT moves_game_id_fkey FOREIGN KEY (game_id)
+        REFERENCES public.games (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE,
+    CONSTRAINT moves_player_id_fkey FOREIGN KEY (player_id)
+        REFERENCES public.players (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE RESTRICT
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.moves
+    OWNER to postgres;
+
+GRANT ALL ON TABLE public.moves TO postgres;
+
+GRANT ALL ON TABLE public.moves TO scrabble_usr;
+-- Index: idx_moves_game
+
+-- DROP INDEX IF EXISTS public.idx_moves_game;
+
+CREATE INDEX IF NOT EXISTS idx_moves_game
+    ON public.moves USING btree
+    (game_id ASC NULLS LAST)
+    WITH (fillfactor=100, deduplicate_items=True)
+    TABLESPACE pg_default;
+
+-- Table: public.players
+
+-- DROP TABLE IF EXISTS public.players;
+
+CREATE TABLE IF NOT EXISTS public.players
+(
+    id integer NOT NULL DEFAULT nextval('players_id_seq'::regclass),
+    nick character varying(40) COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    CONSTRAINT players_pkey PRIMARY KEY (id),
+    CONSTRAINT players_nick_key UNIQUE (nick)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.players
+    OWNER to postgres;
+
+GRANT ALL ON TABLE public.players TO postgres;
+
+GRANT ALL ON TABLE public.players TO scrabble_usr;
