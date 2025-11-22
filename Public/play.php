@@ -12,6 +12,7 @@ $playersById = [];
 foreach (PlayerRepo::all() as $p) $playersById[$p['id']] = $p['nick'];
 
 $moves = MoveRepo::byGame($game_id);
+$lastMove = count($moves) ? $moves[count($moves)-1] : null;
 $board = new Board();
 $scorer = new Scorer($board);
 
@@ -27,30 +28,41 @@ if (count($moves)>0) {
                 $scorer->placeAndScore($m['position'],$m['word']);
             } catch (Throwable $e) {
                 $err = 'Błąd historycznego ruchu #'.$m['move_no'].': '.$e->getMessage();
+                break;
             }
         }
         $scores[$m['player_id']] = $m['cum_score'];
-        $nextPlayer = ($m['player_id'] == $game['player1_id']) ? $game['player2_id'] : $game['player1_id'];
+        $nextPlayer = ($m['player_id']===$game['player1_id'])
+            ? $game['player2_id']
+            : $game['player1_id'];
     }
 }
 
+// Obsługa nowego ruchu
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['raw'])) {
-    $raw = trim($_POST['raw']);
-    $player_id = (int)$_POST['player_id'];
-    $moveNo = count($moves)+1;
+    $player_id = (int)($_POST['player_id'] ?? 0);
     try {
-        $pm = MoveParser::parse($raw);
+        $parser = new MoveParser();
+        $pm = $parser->parse(trim($_POST['raw']));
+
         $score = 0;
         if ($pm->type === 'PLAY') {
-            $res = $scorer->placeAndScore($pm->pos, $pm->word);
-            $score = $res->score;
+            $placement = $scorer->placeAndScore($pm->pos, $pm->word);
+            $score = $placement->score;
+        } elseif ($pm->type === 'EXCHANGE') {
+            $score = 0;
+        } elseif ($pm->type === 'PASS') {
+            $score = 0;
         }
+
+        $moveNo = count($moves)+1;
         $cum = $scores[$player_id] + $score;
+
         MoveRepo::add([
             'game_id'=>$game_id,
             'move_no'=>$moveNo,
             'player_id'=>$player_id,
-            'raw_input'=>$raw,
+            'raw_input'=>trim($_POST['raw']),
             'type'=>$pm->type,
             'position'=>$pm->pos ?? null,
             'word'=>$pm->word ?? null,
@@ -82,7 +94,7 @@ function letterClass(Board $b,int $r,int $c): string {
 <meta charset="utf-8"><title>Gra #<?=$game_id?></title>
 <link rel="stylesheet" href="../assets/style.css">
 </head><body><div class="container">
-<h1>Gra #<?=$game_id?> — <?=htmlspecialchars($playersById[$game['player1_id']])?> vs <?=htmlspecialchars($playersById[$game['player2_id']])?></h1>
+<h1>Gra #<?=$game_id?> — <?=htmlspecialchars($playersById[$game['player1_id']] ?? '')?> vs <?=htmlspecialchars($playersById[$game['player2_id']] ?? '')?></h1>
 <?php if($err): ?><div class="card error"><?=$err?></div><?php endif; ?>
 <div class="grid">
 <div class="card">
@@ -90,12 +102,32 @@ function letterClass(Board $b,int $r,int $c): string {
 <table><tr><th>#</th><th>Gracz</th><th>Zapis</th><th>+pkt</th><th>Σ</th></tr>
 <?php foreach($moves as $m): ?>
 <tr>
-<td><?=$m['move_no']?></td><td><?=htmlspecialchars($m['nick'])?></td>
-<td><?=htmlspecialchars($m['raw_input'])?><?php if($m['type']==='PLAY' && $m['rack']): ?> <span class="small">(rack: <?=htmlspecialchars($m['rack'])?>)</span><?php endif; ?></td>
-<td><?=$m['score']?></td><td><?=$m['cum_score']?></td>
+<td><?=$m['move_no']?></td>
+<td><?=htmlspecialchars($m['nick'])?></td>
+<td>
+    <?=htmlspecialchars($m['raw_input'])?>
+    <?php if($m['type']==='EXCHANGE' && $m['rack']): ?>
+        <span class="small">(wymiana: <?=htmlspecialchars($m['rack'])?>)</span>
+    <?php endif; ?>
+</td>
+<td><?=$m['score']?></td>
+<td><?=$m['cum_score']?></td>
 </tr>
 <?php endforeach; ?>
 </table>
+
+<?php if ($lastMove && $lastMove['type'] === 'PLAY'): ?>
+<h3>Kwestionowanie ostatniego ruchu</h3>
+<p>Ostatni ruch:
+    <strong><?=htmlspecialchars($lastMove['raw_input'])?></strong>
+    (gracz: <?=htmlspecialchars($playersById[$lastMove['player_id']] ?? '')?>)
+</p>
+<form method="post" action="challenge.php" style="display:inline">
+    <input type="hidden" name="game_id" value="<?=$game_id?>">
+    <button class="btn">Kwestionuj</button>
+</form>
+<a class="btn" href="play.php?game_id=<?=htmlspecialchars((string)$game_id)?>">Następny ruch</a>
+<?php endif; ?>
 
 <h3>Dodaj ruch</h3>
 <form method="post">
