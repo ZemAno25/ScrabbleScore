@@ -141,7 +141,8 @@ if (count($moves) === 0) {
 
             if (count($illegalWords) > 0) {
                 // Skuteczne kwestionowanie: oznacz ruch jako BADWORD,
-                // punkty za ruch cofnięte, litery znikają z planszy
+                // punkty za ruch cofnięte (w tym wierszu),
+                // litery znikają z planszy (logika odtwarzania planszy).
                 $result = 'success';
                 $pdo->beginTransaction();
                 $upd = $pdo->prepare(
@@ -191,8 +192,10 @@ $cfg = require __DIR__ . '/../config.php';
         <?php elseif ($result === 'success'): ?>
             <p>Kwestionowanie było <strong>skuteczne</strong>. Ruch
                 <strong><?=htmlspecialchars($lastMove['raw_input'] ?? '')?></strong>
-                został oznaczony jako BADWORD, punkty za ten ruch anulowano,
-                a wyłożone litery zdjęto z planszy.</p>
+                został oznaczony w bazie jako <strong>BADWORD</strong>
+                (nieprawidłowy ruch — <strong>BADMOVE</strong>),
+                punkty za ten ruch anulowano,
+                a wyłożone litery zostaną usunięte przy ponownym odtworzeniu planszy.</p>
             <?php if (!empty($illegalWords)): ?>
                 <p>Następujące słowa nie zostały znalezione w słowniku OSPS:</p>
                 <ul>

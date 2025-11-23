@@ -32,8 +32,8 @@ $msg = null;
 // Wyznacz gracza, który jest "następny w kolejce"
 $nextPlayer = $game['player1_id'];
 
+// Odtworzenie planszy i wyników z historii ruchów
 if (count($moves) > 0) {
-    // Odtworzenie planszy i wyników z historii ruchów
     foreach ($moves as $m) {
         if ($m['type'] === 'PLAY') {
             try {
@@ -54,6 +54,28 @@ if (count($moves) > 0) {
     }
 }
 
+// Czy gra została zakończona PASS-ami (2 kolejki z rzędu obu graczy)?
+$gameEndedByPasses = false;
+if (count($moves) >= 4) {
+    $last4 = array_slice($moves, -4);
+    $allPass = true;
+    foreach ($last4 as $m) {
+        if ($m['type'] !== 'PASS') {
+            $allPass = false;
+            break;
+        }
+    }
+    if ($allPass) {
+        $playersInLast4 = [];
+        foreach ($last4 as $m) {
+            $playersInLast4[$m['player_id']] = true;
+        }
+        if (count($playersInLast4) === 2) {
+            $gameEndedByPasses = true;
+        }
+    }
+}
+
 // Obsługa nowego ruchu
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
@@ -62,6 +84,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         $parser = new MoveParser();
         $pm     = $parser->parse(trim($_POST['raw']));
 
+        // Gra zakończona PASS-ami – dopuszczamy tylko ENDGAME
+        if ($gameEndedByPasses && $pm->type !== 'ENDGAME') {
+            throw new RuntimeException(
+                'Gra została zakończona po dwóch kolejkach PASS obu graczy. ' .
+                'Możesz dodać jedynie ruch ENDGAME lub zakończyć wprowadzanie.'
+            );
+        }
+
         $score = 0;
         if ($pm->type === 'PLAY') {
             $placement = $scorer->placeAndScore($pm->pos, $pm->word);
@@ -69,6 +99,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         } elseif ($pm->type === 'EXCHANGE') {
             $score = 0;
         } elseif ($pm->type === 'PASS') {
+            $score = 0;
+        } elseif ($pm->type === 'ENDGAME') {
+            // Na razie nie liczymy automatycznie premii końcowych –
+            // ruch ENDGAME służy do ręcznego zakończenia / rozliczenia.
             $score = 0;
         }
 
@@ -92,6 +126,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         exit;
     } catch (Throwable $e) {
         $err = 'Błąd: '.$e->getMessage();
+    }
+}
+
+// Szczegółowe informacje o ostatnim ruchu PLAY
+$lastPlacement = null;
+if ($lastMove && $lastMove['type'] === 'PLAY' && !$err) {
+    try {
+        // Odtwórz planszę do stanu PRZED ostatnim ruchem
+        $tmpBoard  = new Board();
+        $tmpScorer = new Scorer($tmpBoard);
+        foreach ($moves as $m) {
+            if ($m['move_no'] === $lastMove['move_no']) {
+                break;
+            }
+            if ($m['type'] === 'PLAY') {
+                $tmpScorer->placeAndScore($m['position'], $m['word']);
+            }
+        }
+        // Policz ostatni ruch na czystym (dla niego) stanie
+        $lastPlacement = $tmpScorer->placeAndScore(
+            $lastMove['position'],
+            $lastMove['word']
+        );
+    } catch (Throwable $e) {
+        $lastPlacement = null;
     }
 }
 
@@ -139,6 +198,14 @@ function letterClass(Board $b, int $r, int $c): string
         <div class="card error"><?=$err?></div>
     <?php endif; ?>
 
+    <?php if ($gameEndedByPasses): ?>
+        <div class="card small error" style="margin-top:8px;">
+            Gra została zakończona dwoma kolejnymi kolejkami PASS obu graczy.
+            Dalsze ruchy typu PLAY/PASS/EXCHANGE są zablokowane.
+            Możesz dodać jedynie ruch typu <strong>ENDGAME</strong> dla rozliczenia końcowego.
+        </div>
+    <?php endif; ?>
+
     <div class="grid">
         <div class="card">
             <h2>Ruchy</h2>
@@ -158,7 +225,12 @@ function letterClass(Board $b, int $r, int $c): string
                             <?=htmlspecialchars($m['raw_input'])?>
                             <?php if ($m['type'] === 'EXCHANGE' && $m['rack']): ?>
                                 <span class="small">
-                                    (wymiana: <?=htmlspecialchars($m['rack'])?>)
+                                    (wymiana ze stojaka: <?=htmlspecialchars($m['rack'])?>)
+                                </span>
+                            <?php endif; ?>
+                            <?php if ($m['type'] === 'BADWORD'): ?>
+                                <span class="small error">
+                                    (nieprawidłowy ruch — BADMOVE)
                                 </span>
                             <?php endif; ?>
                         </td>
@@ -176,6 +248,60 @@ function letterClass(Board $b, int $r, int $c): string
                     (gracz:
                     <?=htmlspecialchars($playersById[$lastMove['player_id']] ?? '')?>)
                 </p>
+
+                <?php if ($lastPlacement): ?>
+                    <div class="small" style="margin-bottom:8px;">
+                        <strong>Szczegóły punktacji tego ruchu:</strong>
+                        <ul>
+                            <?php foreach ($lastPlacement->words as $w): ?>
+                                <?php $d = $w['detail']; ?>
+                                <li>
+                                    <?=$w['kind'] === 'main' ? 'Słowo główne' : 'Słowo poboczne'?>:
+                                    <strong><?=htmlspecialchars($d['word'])?></strong>
+                                    (<?=htmlspecialchars($d['startCoord'])?>,
+                                    <?=$d['direction'] === 'H' ? 'poziomo' : 'pionowo'?>)
+                                    <ul>
+                                        <?php foreach ($d['letters'] as $ld): ?>
+                                            <li>
+                                                <?=htmlspecialchars($ld['letter'])?>
+                                                (<?=htmlspecialchars($ld['coord'])?>):
+                                                <?php if ($ld['isBlank']): ?>
+                                                    blank, wartość 0
+                                                <?php else: ?>
+                                                    <?=$ld['letterScore']?> pkt
+                                                <?php endif; ?>
+                                                <?php if ($ld['letterMultiplier'] > 1): ?>
+                                                    × premia literowa <?=$ld['letterMultiplier']?>
+                                                <?php endif; ?>
+                                                = <?=$ld['cellScore']?> pkt
+                                                <?php if ($ld['wordMultiplier'] > 1): ?>
+                                                    (pole z premią słowną ×<?=$ld['wordMultiplier']?>)
+                                                <?php endif; ?>
+                                            </li>
+                                        <?php endforeach; ?>
+                                        <li>
+                                            Suma liter: <?=$d['sumLetters']?>,
+                                            mnożnik słowa: ×<?=$d['wordMultiplier']?>,
+                                            punkty za słowo:
+                                            <strong><?=$d['score']?></strong>
+                                        </li>
+                                    </ul>
+                                </li>
+                            <?php endforeach; ?>
+                            <?php if ($lastPlacement->bingoBonus > 0): ?>
+                                <li>
+                                    Premia za wyłożenie wszystkich 7 liter:
+                                    <?=$lastPlacement->bingoBonus?> pkt
+                                </li>
+                            <?php endif; ?>
+                            <li>
+                                Łącznie za ruch:
+                                <strong><?=$lastPlacement->score?></strong> pkt
+                            </li>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
                 <form method="post" action="challenge.php" style="display:inline">
                     <input type="hidden" name="game_id" value="<?=$game_id?>">
                     <button class="btn">Kwestionuj</button>
@@ -209,8 +335,9 @@ function letterClass(Board $b, int $r, int $c): string
                 </div>
 
                 <label>
-                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ" lub "7G BAGNO"
-                    lub "K4 KAR(O)" lub "PASS" lub "EXCHANGE")
+                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "7G BAGNO",
+                    "K4 KAR(O)", "PASS", "EXCHANGE",
+                    "LK?RWSS EXCHANGE (RWSS)", "ENDGAME")
                 </label>
                 <input name="raw" required>
 
@@ -231,20 +358,20 @@ function letterClass(Board $b, int $r, int $c): string
                     <?php endforeach; ?>
                 </div>
 
-                <div class="board board-grid">
-                    <?php for ($r = 0; $r < 15; $r++): ?>
-                        <div class="coord coord-row"><?=$r + 1?></div>
-                        <?php for ($c = 0; $c < 15; $c++): ?>
-                            <div class="cell <?=letterClass($board, $r, $c)?>">
-                                <?php if ($board->cells[$r][$c]['letter']): ?>
-                                    <?=htmlspecialchars($board->cells[$r][$c]['letter'])?>
-                                <?php else: ?>
-                                    &nbsp;
-                                <?php endif; ?>
-                            </div>
-                        <?php endfor; ?>
+            <div class="board board-grid">
+                <?php for ($r = 0; $r < 15; $r++): ?>
+                    <div class="coord coord-row"><?=$r + 1?></div>
+                    <?php for ($c = 0; $c < 15; $c++): ?>
+                        <div class="cell <?=letterClass($board, $r, $c)?>">
+                            <?php if ($board->cells[$r][$c]['letter']): ?>
+                                <?=htmlspecialchars($board->cells[$r][$c]['letter'])?>
+                            <?php else: ?>
+                                &nbsp;
+                            <?php endif; ?>
+                        </div>
                     <?php endfor; ?>
-                </div>
+                <?php endfor; ?>
+            </div>
             </div>
 
             <p class="small">
@@ -255,5 +382,17 @@ function letterClass(Board $b, int $r, int $c): string
 
     <p><a class="btn" href="new_game.php">Powrót</a></p>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var input = document.querySelector('input[name="raw"]');
+    if (input) {
+        input.focus();
+        if (input.select) {
+            input.select();
+        }
+    }
+});
+</script>
 </body>
 </html>
