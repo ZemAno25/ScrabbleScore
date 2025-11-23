@@ -201,6 +201,48 @@ td:nth-child(3) {
     min-width: 420px;
 }
 
+/* Wybór gracza – radio */
+
+.player-chooser {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.player-chooser-label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: block;
+    margin-bottom: 4px;
+    opacity: 0.85;
+}
+
+.player-chooser-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.player-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.player-radio input {
+    margin: 0;
+}
+
+.player-radio span {
+    font-weight: 500;
+}
+
 /* Plansza – div.board + div.cell */
 
 .board {
@@ -258,6 +300,51 @@ td:nth-child(3) {
     color: #fff;
 }
 
+/* Wrapper i współrzędne planszy */
+
+.board-wrapper {
+    width: 100%;
+    max-width: min(100%, 72vh);
+    margin: 0 auto;
+}
+
+.board-header {
+    display: grid;
+    grid-template-columns: 32px repeat(15, 1fr);
+    gap: 1px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: #cfd8ff;
+    text-align: center;
+}
+
+.coord-corner {
+    width: 32px;
+    height: 32px;
+}
+
+.coord {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+
+.coord-col {
+    /* nagłówki kolumn (A–O) */
+}
+
+.coord-row {
+    /* etykiety wierszy (1–15) */
+}
+
+/* .board-grid nadpisuje układ kolumn planszy tak,
+   aby pierwsza kolumna była na numery wierszy */
+
+.board-grid {
+    grid-template-columns: 32px repeat(15, 1fr);
+}
+
 /* opis pod planszą */
 
 .board + .small {
@@ -277,11 +364,19 @@ td:nth-child(3) {
         grid-template-columns: 1fr;
     }
 
+    .board-wrapper {
+        max-width: 100%;
+    }
+
     .board {
         max-width: 100%;
     }
 
     .board .cell {
         font-size: 18px;
+    }
+
+    .board-header {
+        font-size: 11px;
     }
 }
