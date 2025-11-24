@@ -4,23 +4,63 @@ require_once __DIR__ . '/../src/Board.php';
 require_once __DIR__ . '/../src/Scorer.php';
 require_once __DIR__ . '/../src/MoveParser.php';
 
-$game_id = (int)($_GET['game_id'] ?? 0);
-$game    = GameRepo::get($game_id);
+// ---------------------------------------------------------
+// Ustalenie ID gry (GET lub POST – potrzebne także dla cofnij)
+// ---------------------------------------------------------
+$game_id = (int)($_GET['game_id'] ?? $_POST['game_id'] ?? 0);
+if ($game_id <= 0) {
+    http_response_code(400);
+    echo 'Brak identyfikatora gry.';
+    exit;
+}
+
+// ---------------------------------------------------------
+// Cofnięcie ostatniego ruchu
+// ---------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['undo_last'])) {
+    try {
+        $pdo = Database::get();
+        // Szukamy ostatniego ruchu w tej grze
+        $stmt = $pdo->prepare(
+            'SELECT id FROM moves WHERE game_id = :g ORDER BY move_no DESC LIMIT 1'
+        );
+        $stmt->execute([':g' => $game_id]);
+        $lastId = $stmt->fetchColumn();
+
+        if ($lastId) {
+            $del = $pdo->prepare('DELETE FROM moves WHERE id = :id');
+            $del->execute([':id' => $lastId]);
+        }
+    } catch (Throwable $e) {
+        // Można ewentualnie zalogować błąd, ale użytkownik i tak
+        // wróci do widoku gry.
+    }
+
+    header('Location: play.php?game_id=' . $game_id);
+    exit;
+}
+
+// ---------------------------------------------------------
+// Wczytanie gry i graczy
+// ---------------------------------------------------------
+$game = GameRepo::get($game_id);
 if (!$game) {
     http_response_code(404);
     echo 'Brak gry.';
     exit;
 }
 
-// mapowanie id => nick
 $playersById = [];
 foreach (PlayerRepo::all() as $p) {
     $playersById[$p['id']] = $p['nick'];
 }
 
-$moves = MoveRepo::byGame($game_id);
+// ---------------------------------------------------------
+// Ruchy i odtworzenie planszy
+// ---------------------------------------------------------
+$moves    = MoveRepo::byGame($game_id);
+$lastMove = count($moves) ? $moves[count($moves) - 1] : null;
 
-// aktualny stan planszy i wyniki
 $board  = new Board();
 $scorer = new Scorer($board);
 
@@ -29,50 +69,54 @@ $scores = [
     $game['player2_id'] => 0,
 ];
 
-$nextPlayer    = $game['player1_id'];
-$err           = null;
-$lastMove      = null;
-$lastPlacement = null;
+$err = null;
+$msg = null;
 
-// odtworzenie historii ruchów
+// Następny gracz (domyślnie gracz 1, potem naprzemiennie)
+$nextPlayer = $game['player1_id'];
+
+// Szczegóły punktacji ostatniego ruchu (dla sekcji "Szczegóły punktacji...")
+$lastMoveBreakdown = null;
+
 if (count($moves) > 0) {
-    $movesCount = count($moves);
-    foreach ($moves as $idx => $m) {
-        try {
-            $placement = null;
-            if ($m['type'] === 'PLAY' && $m['position'] && $m['word']) {
+    foreach ($moves as $m) {
+        if ($m['type'] === 'PLAY' && $m['position'] && $m['word']) {
+            try {
                 $placement = $scorer->placeAndScore($m['position'], $m['word']);
-            }
 
-            // aktualizacja wyniku gracza z bazy (cum_score ma pierwszeństwo)
-            $scores[$m['player_id']] = $m['cum_score'];
-
-            // naprzemienność graczy
-            $nextPlayer = ($m['player_id'] == $game['player1_id'])
-                ? $game['player2_id']
-                : $game['player1_id'];
-
-            if ($idx === $movesCount - 1) {
-                $lastMove = $m;
-                if ($m['type'] === 'PLAY' && $placement instanceof PlacementResult) {
-                    $lastPlacement = $placement;
+                // Jeśli to ostatni ruch i jest PLAY – zapamiętaj breakdown
+                if ($lastMove && $m['id'] == $lastMove['id']) {
+                    // Scorer powinien wypełnić $placement->wordBreakdown
+                    $lastMoveBreakdown = $placement->wordBreakdown ?? null;
                 }
+            } catch (Throwable $e) {
+                $err = 'Błąd historycznego ruchu #' . $m['move_no'] . ': ' . $e->getMessage();
+                break;
             }
-        } catch (Throwable $e) {
-            $err = 'Błąd historycznego ruchu #' . $m['move_no'] . ': ' . $e->getMessage();
-            break;
         }
+
+        // Odtwarzamy wyniki z bazy (cum_score)
+        $scores[$m['player_id']] = $m['cum_score'];
+
+        // Naprzemienność graczy
+        $nextPlayer = ($m['player_id'] == $game['player1_id'])
+            ? $game['player2_id']
+            : $game['player1_id'];
     }
 }
 
-// obsługa nowego ruchu
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw']) && !isset($_POST['undo'])) {
+// ---------------------------------------------------------
+// Obsługa nowego ruchu
+// ---------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw']) && !isset($_POST['undo_last'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
 
     try {
-        $pm = MoveParser::parse(trim($_POST['raw']));
+        $parser = new MoveParser();
+        $pm     = $parser->parse(trim($_POST['raw']));
 
         $score = 0;
+
         if ($pm->type === 'PLAY') {
             $placement = $scorer->placeAndScore($pm->pos, $pm->word);
             $score     = $placement->score;
@@ -81,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw']) && !isset($_PO
         } elseif ($pm->type === 'PASS') {
             $score = 0;
         } elseif ($pm->type === 'ENDGAME') {
-            // na razie ENDGAME bez dodatkowych obliczeń
+            // Specjalny ruch końcowy – logika do ewentualnego rozwinięcia
             $score = 0;
         }
 
@@ -108,8 +152,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw']) && !isset($_PO
     }
 }
 
-// funkcje pomocnicze do renderowania
-
+// ---------------------------------------------------------
+// Helper do klasy komórki planszy
+// ---------------------------------------------------------
 function letterClass(Board $b, int $r, int $c): string
 {
     if ($b->cells[$r][$c]['letter']) {
@@ -132,33 +177,8 @@ function letterClass(Board $b, int $r, int $c): string
     return '';
 }
 
-/**
- * Buduje zapis typu (2 + 1 + 1 + 1*2) dla słowa,
- * tzn. pokazuje mnożniki literowe w formie "wartość * premia".
- */
-function formatWordLetterFormula(array $wordDetail): string
-{
-    $parts = [];
-
-    foreach ($wordDetail['letters'] as $letter) {
-        $base = $letter['base'];
-
-        // blank ma wartość 0 – można pokazać po prostu 0
-        if ($letter['isBlank']) {
-            $parts[] = '0';
-            continue;
-        }
-
-        $expr = (string)$base;
-        if ($letter['multL'] > 1) {
-            $expr = $base . '*' . $letter['multL'];
-        }
-        $parts[] = $expr;
-    }
-
-    return implode(' + ', $parts);
-}
-
+// Kolumny A–O
+$columns = range('A', 'O');
 ?>
 <!doctype html>
 <html lang="pl">
@@ -166,31 +186,14 @@ function formatWordLetterFormula(array $wordDetail): string
     <meta charset="utf-8">
     <title>Gra #<?= $game_id ?></title>
     <link rel="stylesheet" href="../assets/style.css">
-    <style>
-        /* wyróżnienie blanków na planszy */
-        .blank-letter {
-            display: inline-block;
-            padding: 1px 2px;
-            border: 2px solid #f1c40f;
-            border-radius: 3px;
-            font-size: 0.9em;
-            text-transform: lowercase;
-            line-height: 1;
-        }
-        .btn-secondary {
-            background: #555;
-            color: #fff;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-left: 8px;
-        }
-        .btn-secondary:hover {
-            background: #666;
-        }
-    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var input = document.querySelector('input[name="raw"]');
+            if (input) {
+                input.focus();
+            }
+        });
+    </script>
 </head>
 <body>
 <div class="container">
@@ -206,6 +209,7 @@ function formatWordLetterFormula(array $wordDetail): string
     <?php endif; ?>
 
     <div class="grid">
+        <!-- LEWA KOLUMNA: RUCHY + FORMULARZ -->
         <div class="card">
             <h2>Ruchy</h2>
             <table>
@@ -223,12 +227,10 @@ function formatWordLetterFormula(array $wordDetail): string
                         <td>
                             <?= htmlspecialchars($m['raw_input']) ?>
                             <?php if ($m['type'] === 'EXCHANGE' && $m['rack']): ?>
-                                <span class="small">
-                                    (wymiana: <?= htmlspecialchars($m['rack']) ?>)
-                                </span>
+                                <span class="small">(wymiana: <?= htmlspecialchars($m['rack']) ?>)</span>
                             <?php endif; ?>
                             <?php if ($m['type'] === 'BADWORD'): ?>
-                                <span class="small" style="color:#ff7676;">[BADWORD]</span>
+                                <span class="badge-badmove">BADWORD</span>
                             <?php endif; ?>
                         </td>
                         <td><?= $m['score'] ?></td>
@@ -245,38 +247,51 @@ function formatWordLetterFormula(array $wordDetail): string
                     (gracz:
                     <?= htmlspecialchars($playersById[$lastMove['player_id']] ?? '') ?>)
                 </p>
+
+                <?php if ($lastMoveBreakdown): ?>
+                    <h4>Szczegóły punktacji tego ruchu:</h4>
+                    <ul>
+                        <?php foreach ($lastMoveBreakdown as $w): ?>
+                            <li>
+                                <?php if ($w['kind'] === 'main'): ?>
+                                    Słowo główne:
+                                <?php else: ?>
+                                    Słowo krzyżujące:
+                                <?php endif; ?>
+                                <?= htmlspecialchars($w['word']) ?> =
+                                (
+                                <?php
+                                $parts = [];
+                                foreach ($w['letters'] as $L) {
+                                    $part = $L['base'];
+                                    if (($L['multL'] ?? 1) !== 1) {
+                                        $part .= ' * ' . ($L['multL'] ?? 1);
+                                    }
+                                    $parts[] = $part;
+                                }
+                                echo implode(' + ', $parts);
+                                ?>
+                                )
+                                <?php if (($w['wordMultiplier'] ?? 1) !== 1): ?>
+                                    * <?= $w['wordMultiplier'] ?>
+                                <?php endif; ?>
+                                = <?= $w['score'] ?>
+                            </li>
+                        <?php endforeach; ?>
+                        <li><strong>Łącznie za ruch:</strong> <?= $lastMove['score'] ?> pkt</li>
+                    </ul>
+                <?php endif; ?>
+
                 <form method="post" action="challenge.php" style="display:inline">
                     <input type="hidden" name="game_id" value="<?= $game_id ?>">
-                    <button class="btn" type="submit">Kwestionuj</button>
+                    <button class="btn">Kwestionuj</button>
                 </form>
             <?php endif; ?>
 
-            <?php if ($lastPlacement instanceof PlacementResult && !empty($lastPlacement->words)): ?>
-                <h3>Szczegóły punktacji tego ruchu</h3>
-                <ul>
-                    <?php foreach ($lastPlacement->words as $w): ?>
-                        <li>
-                            <?= $w['isMain'] ? 'Słowo główne' : 'Słowo poboczne' ?>:
-                            <strong><?= htmlspecialchars($w['text']) ?></strong>
-                            =
-                            (
-                            <?= htmlspecialchars(formatWordLetterFormula($w)) ?>
-                            )
-                            <?php if ($w['wordMult'] > 1): ?>
-                                * <?= $w['wordMult'] ?>
-                            <?php endif; ?>
-                            = <?= $w['wordScore'] ?> pkt
-                        </li>
-                    <?php endforeach; ?>
-                    <?php if ($lastPlacement->bingoBonus > 0): ?>
-                        <li>Premia za wyłożenie 7 liter (bingo): <?= $lastPlacement->bingoBonus ?> pkt</li>
-                    <?php endif; ?>
-                    <li><strong>Łącznie za ruch: <?= $lastPlacement->score ?> pkt</strong></li>
-                </ul>
-            <?php endif; ?>
-
             <h3>Dodaj ruch</h3>
-            <form method="post">
+            <form method="post" id="move-form">
+                <input type="hidden" name="game_id" value="<?= $game_id ?>">
+
                 <div class="player-chooser">
                     <span class="player-chooser-label">Gracz wykonujący ruch</span>
                     <div class="player-chooser-options">
@@ -302,28 +317,23 @@ function formatWordLetterFormula(array $wordDetail): string
                 </div>
 
                 <label>
-                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "7G BAGNO",
-                    "K4 KAR(O)", "PASS", "EXCHANGE",
-                    "LK?RWSS EXCHANGE (RWSS)", "ENDGAME")
+                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "7G BAGNO", "K4 KAR(O)", "PASS",
+                    "EXCHANGE", "LK?RWSS EXCHANGE (RWSS)", "ENDGAME")
                 </label>
-                <input name="raw" required autofocus>
+                <input name="raw" required>
 
-                <button class="btn" style="margin-top:8px" type="submit">Zatwierdź</button>
-            </form>
-
-            <form method="post" action="undo_move.php" style="display:inline;">
-                <input type="hidden" name="game_id" value="<?= $game_id ?>">
-                <input type="hidden" name="undo" value="1">
-                <button class="btn-secondary" type="submit" style="margin-top:8px;">
+                <button class="btn" name="submit_move" value="1" style="margin-top:8px">
+                    Zatwierdź
+                </button>
+                <button class="btn-secondary" name="undo_last" value="1" style="margin-top:8px;margin-left:8px">
                     Cofnij ostatni ruch
                 </button>
             </form>
         </div>
 
+        <!-- PRAWA KOLUMNA: PLANSZA -->
         <div class="card">
             <h2>Plansza</h2>
-
-            <?php $columns = range('A', 'O'); ?>
 
             <div class="board-wrapper">
                 <div class="board-header">
@@ -337,15 +347,18 @@ function formatWordLetterFormula(array $wordDetail): string
                     <?php for ($r = 0; $r < 15; $r++): ?>
                         <div class="coord coord-row"><?= $r + 1 ?></div>
                         <?php for ($c = 0; $c < 15; $c++): ?>
+                            <?php $cell = $board->cells[$r][$c]; ?>
                             <div class="cell <?= letterClass($board, $r, $c) ?>">
-                                <?php if ($board->cells[$r][$c]['letter']): ?>
-                                    <?php if ($board->cells[$r][$c]['isBlank']): ?>
-                                        <span class="blank-letter">
-                                            <?= htmlspecialchars(mb_strtolower($board->cells[$r][$c]['letter'], 'UTF-8')) ?>
-                                        </span>
-                                    <?php else: ?>
-                                        <?= htmlspecialchars($board->cells[$r][$c]['letter']) ?>
-                                    <?php endif; ?>
+                                <?php if ($cell['letter']): ?>
+                                    <?php
+                                    $isBlank = !empty($cell['isBlank']);
+                                    $disp    = $isBlank
+                                        ? mb_strtolower($cell['letter'], 'UTF-8')
+                                        : $cell['letter'];
+                                    ?>
+                                    <span class="<?= $isBlank ? 'tile-blank-letter' : '' ?>">
+                                        <?= htmlspecialchars($disp) ?>
+                                    </span>
                                 <?php else: ?>
                                     &nbsp;
                                 <?php endif; ?>
@@ -363,16 +376,5 @@ function formatWordLetterFormula(array $wordDetail): string
 
     <p><a class="btn" href="new_game.php">Powrót</a></p>
 </div>
-
-<script>
-// po każdym załadowaniu strony ustawiamy fokus na polu zapisu ruchu
-document.addEventListener('DOMContentLoaded', function () {
-    var input = document.querySelector('input[name="raw"]');
-    if (input) {
-        input.focus();
-        input.select();
-    }
-});
-</script>
 </body>
 </html>
