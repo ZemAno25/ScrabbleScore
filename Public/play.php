@@ -18,7 +18,7 @@ foreach (PlayerRepo::all() as $p) {
     $playersById[$p['id']] = $p['nick'];
 }
 
-$moves = MoveRepo::byGame($game_id);
+$moves    = MoveRepo::byGame($game_id);
 $lastMove = count($moves) ? $moves[count($moves) - 1] : null;
 
 $board  = new Board();
@@ -34,7 +34,7 @@ $err = null;
 // domyślnie następny gracz to pierwszy
 $nextPlayer = $game['player1_id'];
 
-// Odtwarzamy historię ruchów, żeby mieć aktualną planszę i wyniki
+// Odtworzenie historii ruchów
 if (count($moves) > 0) {
     foreach ($moves as $m) {
         if ($m['type'] === 'PLAY' && $m['position'] && $m['word']) {
@@ -46,10 +46,8 @@ if (count($moves) > 0) {
             }
         }
 
-        // aktualizacja wyniku gracza
         $scores[$m['player_id']] = $m['cum_score'];
 
-        // wyznaczenie kolejnego gracza (naprzemienność)
         $nextPlayer = ($m['player_id'] == $game['player1_id'])
             ? $game['player2_id']
             : $game['player1_id'];
@@ -61,8 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
 
     try {
-        $parser = new MoveParser();
-        $pm     = $parser->parse(trim($_POST['raw']));
+        $pm = MoveParser::parse(trim($_POST['raw']));
 
         $score = 0;
         if ($pm->type === 'PLAY') {
@@ -73,7 +70,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         } elseif ($pm->type === 'PASS') {
             $score = 0;
         } elseif ($pm->type === 'ENDGAME') {
-            // na razie brak specjalnej logiki punktacji końcowej
             $score = 0;
         }
 
@@ -129,7 +125,6 @@ $lastMoveScore   = null;
 
 if ($lastMove && $lastMove['type'] === 'PLAY' && $lastMove['position'] && $lastMove['word']) {
     try {
-        // Potrzebujemy planszy sprzed ostatniego ruchu, żeby mieć poprawne premie
         $tmpBoard  = new Board();
         $tmpScorer = new Scorer($tmpBoard);
 
@@ -140,7 +135,7 @@ if ($lastMove && $lastMove['type'] === 'PLAY' && $lastMove['position'] && $lastM
                 try {
                     $tmpScorer->placeAndScore($m['position'], $m['word']);
                 } catch (Throwable $e) {
-                    // ignorujemy błędy historyczne dla celów wyjaśnienia
+                    // ignorujemy błędy historyczne
                 }
             }
         }
@@ -152,13 +147,12 @@ if ($lastMove && $lastMove['type'] === 'PLAY' && $lastMove['position'] && $lastM
         $lastMoveDetails = $placementExplain->wordDetails;
         $lastMoveScore   = $placementExplain->score;
     } catch (Throwable $e) {
-        // jeżeli tu coś pójdzie nie tak, po prostu nie wyświetlamy szczegółów
         $lastMoveDetails = [];
         $lastMoveScore   = null;
     }
 }
 
-// Zawartość worka – zestaw startowy (polska wersja, 100 płytek)
+// Zawartość worka – zestaw startowy
 $initialBag = [
     'A' => 9,
     'Ą' => 1,
@@ -192,10 +186,9 @@ $initialBag = [
     'Z' => 5,
     'Ź' => 1,
     'Ż' => 1,
-    '?' => 2, // blanki
+    '?' => 2,
 ];
 
-// policz, co już zeszło z worka (na planszy)
 $remaining = $initialBag;
 for ($r = 0; $r < 15; $r++) {
     for ($c = 0; $c < 15; $c++) {
@@ -213,7 +206,6 @@ for ($r = 0; $r < 15; $r++) {
     }
 }
 
-// zbuduj tekstowy widok zawartości worka
 ksort($remaining, SORT_STRING);
 $bagLetters = '';
 foreach ($remaining as $ch => $cnt) {
@@ -304,8 +296,10 @@ $bagLetters = trim($bagLetters);
                             $crosses[] = $d;
                         }
                     }
+                    ?>
 
-                    if ($main !== null):
+                    <?php if ($main !== null): ?>
+                        <?php
                         $expr = $main['letterExpr'];
                         if ($main['wordMultiplier'] > 1) {
                             $line = sprintf(
@@ -323,7 +317,7 @@ $bagLetters = trim($bagLetters);
                                 $main['score']
                             );
                         }
-                    ?>
+                        ?>
                         <li>Słowo główne: <?=$line?></li>
                     <?php endif; ?>
 
@@ -429,9 +423,7 @@ $bagLetters = trim($bagLetters);
                                 <div class="cell <?=letterClass($board, $r, $c)?>">
                                     <?php if ($board->cells[$r][$c]['letter']): ?>
                                         <?php if (!empty($board->cells[$r][$c]['isBlank'])): ?>
-                                            <?php
-                                            $ch = mb_strtolower($board->cells[$r][$c]['letter'], 'UTF-8');
-                                            ?>
+                                            <?php $ch = mb_strtolower($board->cells[$r][$c]['letter'], 'UTF-8'); ?>
                                             <span class="tile-blank"><?=htmlspecialchars($ch)?></span>
                                         <?php else: ?>
                                             <?=htmlspecialchars($board->cells[$r][$c]['letter'])?>
@@ -440,7 +432,7 @@ $bagLetters = trim($bagLetters);
                                         &nbsp;
                                     <?php endif; ?>
                                 </div>
-                            <?php endforeach; ?>
+                            <?php endfor; ?>
                         <?php endfor; ?>
                     </div>
 
