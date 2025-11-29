@@ -6,24 +6,26 @@ require_once __DIR__.'/PolishLetters.php';
 class PlacementResult {
     public int $score = 0;
     public int $lettersPlaced = 0;
-    public array $mainWordCoords = [];   // lista [row, col]
-    public array $placed = [];           // współrzędne nowo położonych płytek [row, col]
 
-    // Szczegółowy opis słów z ruchu:
-    // [
-    //   'word'           => 'EH',
-    //   'score'          => 12,
-    //   'kind'           => 'main' | 'cross',
-    //   'wordMultiplier' => 3,
-    //   'letters'        => [
-    //       ['base' => 1, 'multL' => 1, 'multW' => 1],
-    //       ['base' => 3, 'multL' => 1, 'multW' => 3],
-    //   ],
-    // ]
-    public array $words = [];
+    // lista współrzędnych głównego słowa [ [r,c], ... ]
+    public array $mainWordCoords = [];
 
-    // Bonus za bingo (7 liter z rąk)
-    public int $bingoBonus = 0;
+    // współrzędne nowo położonych płytek [ [r,c], ... ]
+    public array $placed = [];
+
+    /**
+     * Szczegóły punktacji dla wszystkich słów utworzonych w ruchu.
+     * Każdy element:
+     * [
+     *   'kind'          => 'main' | 'cross',
+     *   'word'          => 'MIKI',
+     *   'letterExpr'    => '2 + 1 + 2 + 1'   (tylko litery, z uwzględnieniem premii literowych),
+     *   'sumLetters'    => 6,
+     *   'wordMultiplier'=> 2,
+     *   'score'         => 12
+     * ]
+     */
+    public array $wordDetails = [];
 }
 
 class Scorer {
@@ -31,7 +33,7 @@ class Scorer {
     private array $values;
 
     public function __construct(Board $board) {
-        $this->board  = $board;
+        $this->board = $board;
         $this->values = PolishLetters::values();
     }
 
@@ -39,10 +41,13 @@ class Scorer {
         return $ch !== '(' && $ch !== ')';
     }
 
-    // Place word according to notation with parentheses for existing tiles.
+    /**
+     * Główna funkcja – kładzie słowo na planszy według notacji z nawiasami
+     * i zwraca wynik punktowy oraz szczegóły.
+     */
     public function placeAndScore(string $pos, string $word): PlacementResult {
         [$row, $col, $orient] = Board::coordToXY($pos);
-        $w  = $this->normalize($word);
+        $w   = $this->normalize($word);
         $res = new PlacementResult();
 
         $dr = $orient === 'H' ? 0 : 1;
@@ -53,13 +58,14 @@ class Scorer {
         $r = $row;
         $c = $col;
 
+        // Ustalenie pól, na które coś kładziemy / z których korzystamy
         foreach ($letters as $tok) {
             if ($tok['type'] === 'exist') {
-                // istniejąca płytka musi już być na planszy
+                // płytka musi już leżeć
                 if ($this->board->cells[$r][$c]['letter'] === null) {
                     throw new RuntimeException(
-                        "Płytka '{$tok['char']}' w nawiasie wymaga, aby pole " .
-                        Board::xyToCoord($r, $c) . " było już zajęte."
+                        "Płytka '{$tok['char']}' w nawiasie wymaga, aby pole "
+                        . Board::xyToCoord($r, $c) . " było już zajęte."
                     );
                 }
                 $coords[] = [$r, $c, false];
@@ -74,13 +80,12 @@ class Scorer {
                     "Pole " . Board::xyToCoord($r, $c) . " jest już zajęte."
                 );
             }
-
             $coords[] = [$r, $c, true, $tok['char'], $tok['isBlank']];
             $r += $dr;
             $c += $dc;
         }
 
-        // Położenie płytek tymczasowo (locked = false dla nowych)
+        // Tymczasowo połóż nowe płytki (locked = false)
         foreach ($coords as $info) {
             [$rr, $cc, $isNew] = $info;
             if ($isNew) {
@@ -97,66 +102,54 @@ class Scorer {
         }
 
         // Słowo główne
-        $mainDetails = [];
-        $mainScore   = $this->scoreWordLine(
+        $res->score += $this->scoreWordWithDetails(
             $row,
             $col,
             $dr,
             $dc,
-            $res->mainWordCoords,
-            $mainDetails
+            'main',
+            $res
         );
-        $res->score += $mainScore;
 
-        $mainDetails['score'] = $mainScore;
-        $mainDetails['kind']  = 'main';
-        $res->words[]         = $mainDetails;
-
-        // Krzyżówki – dla każdej nowo położonej płytki
+        // Krzyżówki dla każdej nowej płytki
         foreach ($res->placed as [$pr, $pc]) {
-            // kierunek prostopadły
-            $adr = $dc;
+            $adr = $dc; // prostopadły kierunek
             $adc = $dr;
 
             $start = $this->findWordStart($pr, $pc, $adr, $adc);
             $len   = $this->wordLen($start[0], $start[1], $adr, $adc);
-            if ($len <= 1) {
-                continue;   // brak krzyżówki
+            if ($len > 1) {
+                $res->score += $this->scoreWordWithDetails(
+                    $start[0],
+                    $start[1],
+                    $adr,
+                    $adc,
+                    'cross',
+                    $res
+                );
             }
-
-            $crossDetails = [];
-            $dummyCoords  = null; // musi być zmienna, nie literal null
-            $crossScore   = $this->scoreWordLine(
-                $start[0],
-                $start[1],
-                $adr,
-                $adc,
-                $dummyCoords,
-                $crossDetails
-            );
-            $res->score += $crossScore;
-
-            $crossDetails['score'] = $crossScore;
-            $crossDetails['kind']  = 'cross';
-            $res->words[]          = $crossDetails;
         }
 
-        // Zablokuj nowo położone płytki
+        // Zablokuj nowo położone płytki, żeby w przyszłych ruchach pola premii już nie działały
         foreach ($res->placed as [$pr, $pc]) {
             $this->board->cells[$pr][$pc]['locked'] = true;
         }
 
-        // Bingo
+        // Bingo za 7 płytek
         if ($res->lettersPlaced === 7) {
-            $res->bingoBonus = 50;
-            $res->score     += 50;
+            $res->score += 50;
         }
 
         return $res;
     }
 
+    /**
+     * Normalizacja słowa:
+     *  - nawiasy zostają jak są,
+     *  - wielkie litery pozostają wielkie,
+     *  - małe litery (dla blanków) zostają małe.
+     */
     private function normalize(string $w): string {
-        // Duże litery, ale zachowujemy małe (blanki) i nawiasy
         $out = '';
         $len = mb_strlen($w);
         for ($i = 0; $i < $len; $i++) {
@@ -169,17 +162,22 @@ class Scorer {
             if ($ch === $up) {
                 $out .= $up;
             } else {
-                $out .= $ch;   // małe litery (blanki) zostają
+                // mała litera – oznacza blank z przypisaną literą
+                $out .= $ch;
             }
         }
         return $out;
     }
 
+    /**
+     * Rozbija zapis słowa na tokeny:
+     *  - type = 'exist' (litera w nawiasie – już leży na planszy),
+     *  - type = 'new'   (nowo kładziona litera, isBlank = true/false).
+     */
     private function tokenize(string $w): array {
         $tokens = [];
         $inPar  = false;
         $len    = mb_strlen($w);
-
         for ($i = 0; $i < $len; $i++) {
             $ch = mb_substr($w, $i, 1);
             if ($ch === '(') {
@@ -190,7 +188,6 @@ class Scorer {
                 $inPar = false;
                 continue;
             }
-
             if ($inPar) {
                 $tokens[] = [
                     'type' => 'exist',
@@ -205,15 +202,13 @@ class Scorer {
                 ];
             }
         }
-
         return $tokens;
     }
 
     private function findWordStart(int $r, int $c, int $dr, int $dc): array {
-        $size = $this->board->size;
         while (
-            $r - $dr >= 0 && $r - $dr < $size &&
-            $c - $dc >= 0 && $c - $dc < $size &&
+            $r - $dr >= 0 && $c - $dc >= 0 &&
+            $r - $dr < 15 && $c - $dc < 15 &&
             $this->board->cells[$r - $dr][$c - $dc]['letter'] !== null
         ) {
             $r -= $dr;
@@ -223,11 +218,10 @@ class Scorer {
     }
 
     private function wordLen(int $r, int $c, int $dr, int $dc): int {
-        $len  = 0;
-        $size = $this->board->size;
+        $len = 0;
         while (
-            $r >= 0 && $r < $size &&
-            $c >= 0 && $c < $size &&
+            $r >= 0 && $c >= 0 &&
+            $r < 15 && $c < 15 &&
             $this->board->cells[$r][$c]['letter'] !== null
         ) {
             $len++;
@@ -245,81 +239,91 @@ class Scorer {
     }
 
     /**
-     * Liczy wartość słowa w linii (po aktualnym położeniu płytek).
+     * Liczy słowo zaczynając od (row,col) w kierunku (dr,dc),
+     * zapisuje szczegóły do PlacementResult::$wordDetails
+     * i zwraca liczbę punktów za dane słowo.
      *
-     * @param int        $row        – współrzędna początkowa (dowolna litera w słowie)
-     * @param int        $col
-     * @param int        $dr         – krok wiersza (0 lub 1)
-     * @param int        $dc         – krok kolumny (0 lub 1)
-     * @param array|null $coordsOut  – jeżeli podane, zostaną wpisane współrzędne wszystkich liter słowa
-     * @param array|null $detailsOut – jeżeli podane, zostaną wpisane szczegóły:
-     *                                 ['word' => ..., 'letters' => [...], 'wordMultiplier' => int]
+     * Zgodnie z ustaleniami:
+     *  - najpierw sumujemy wartości literowe (z premiami literowymi),
+     *  - na końcu całość mnożymy przez premię słowną,
+     *  - nawiasy w zapisie pojawiają się tylko wtedy, gdy jest premia słowna (>1).
      */
-    private function scoreWordLine(
+    private function scoreWordWithDetails(
         int $row,
         int $col,
         int $dr,
         int $dc,
-        ?array &$coordsOut = null,
-        ?array &$detailsOut = null
+        string $kind,
+        PlacementResult $res
     ): int {
         [$sr, $sc] = $this->findWordStart($row, $col, $dr, $dc);
         $r = $sr;
         $c = $sc;
 
-        $size   = $this->board->size;
-        $coords = [];
-        $lettersInfo = [];
-        $word = '';
-
-        $sum = 0;
-        $wm  = 1;
+        $sumLetters = 0;
+        $wordMult   = 1;
+        $coords     = [];
+        $letters    = [];
+        $baseScores = [];
+        $letterMult = [];
 
         while (
-            $r >= 0 && $r < $size &&
-            $c >= 0 && $c < $size &&
+            $r >= 0 && $c >= 0 &&
+            $r < 15 && $c < 15 &&
             $this->board->cells[$r][$c]['letter'] !== null
         ) {
             $cell = $this->board->cells[$r][$c];
-            $coords[] = [$r, $c];
-
-            $word .= $cell['letter'];
+            $coords[]  = [$r, $c];
+            $letters[] = $cell['letter'];
 
             $ls = $this->letterScore($cell['letter'], $cell['isBlank']);
 
             $multL = 1;
             $multW = 1;
-            // premie tylko dla płytek położonych w tym ruchu (locked == false)
             if (!$cell['locked']) {
                 $multL = $this->board->L[$r][$c];
                 $multW = $this->board->W[$r][$c];
             }
 
-            $lettersInfo[] = [
-                'base'  => $ls,
-                'multL' => $multL,
-                'multW' => $multW,
-            ];
+            $baseScores[] = $ls;
+            $letterMult[] = $multL;
 
-            $sum += $ls * $multL;
-            $wm  *= $multW;
+            $sumLetters += $ls * $multL;
+            $wordMult   *= $multW;
 
             $r += $dr;
             $c += $dc;
         }
 
-        if ($coordsOut !== null) {
-            $coordsOut = $coords;
+        $score = $sumLetters * $wordMult;
+
+        // Zapis wyrażenia literowego, np. "2 * 2 + 1 + 3 * 2"
+        $parts = [];
+        $cnt   = count($baseScores);
+        for ($i = 0; $i < $cnt; $i++) {
+            $bs = $baseScores[$i];
+            $lm = $letterMult[$i];
+            if ($lm > 1) {
+                $parts[] = $bs . ' * ' . $lm;
+            } else {
+                $parts[] = (string)$bs;
+            }
+        }
+        $letterExpr = implode(' + ', $parts);
+
+        if ($kind === 'main') {
+            $res->mainWordCoords = $coords;
         }
 
-        if ($detailsOut !== null) {
-            $detailsOut = [
-                'word'           => $word,
-                'letters'        => $lettersInfo,
-                'wordMultiplier' => $wm,
-            ];
-        }
+        $res->wordDetails[] = [
+            'kind'          => $kind,
+            'word'          => implode('', $letters),
+            'letterExpr'    => $letterExpr,
+            'sumLetters'    => $sumLetters,
+            'wordMultiplier'=> $wordMult,
+            'score'         => $score,
+        ];
 
-        return $sum * $wm;
+        return $score;
     }
 }
