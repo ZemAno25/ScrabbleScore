@@ -103,9 +103,9 @@ h3 {
     box-shadow: 0 6px 16px rgba(12, 80, 160, 0.6);
 }
 
-.btn.btn-secondary {
-    background: linear-gradient(135deg, #555, #777);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+.btn-secondary {
+    background: linear-gradient(135deg, #4b5563, #6b7280);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.6);
 }
 
 /* Formularze */
@@ -160,7 +160,7 @@ select:focus {
     color: #ff9a9a;
 }
 
-/* Układ główny: kolumna ruchów + kolumna planszy */
+/* Układ główny */
 
 .grid {
     display: grid;
@@ -248,7 +248,7 @@ td:nth-child(3) {
     font-weight: 500;
 }
 
-/* Plansza – div.board + div.cell */
+/* Plansza */
 
 .board {
     display: grid;
@@ -281,6 +281,48 @@ td:nth-child(3) {
     background-color: #f6e0b6;
     color: #222;
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+    position: relative;
+    padding: 0;
+}
+
+/* wnętrze kafelka z literą i wartością */
+
+.board .cell .tile-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.board .cell .tile-letter {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.board .cell .tile-score {
+    position: absolute;
+    right: 3px;
+    bottom: 2px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+/* blanki – mała litera w kwadracie */
+
+.board .cell .tile-blank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 70%;
+    min-height: 70%;
+    border: 2px solid #222;
+    border-radius: 4px;
+    font-size: 18px;
+    font-weight: 700;
+    text-transform: lowercase;
 }
 
 /* premie literowe i słowne */
@@ -335,17 +377,6 @@ td:nth-child(3) {
     font-weight: 600;
 }
 
-.coord-col {
-    /* nagłówki kolumn (A–O) */
-}
-
-.coord-row {
-    /* etykiety wierszy (1–15) */
-}
-
-/* .board-grid nadpisuje układ kolumn planszy tak,
-   aby pierwsza kolumna była na numery wierszy */
-
 .board-grid {
     grid-template-columns: 32px repeat(15, 1fr);
 }
@@ -358,49 +389,36 @@ td:nth-child(3) {
     opacity: 0.85;
 }
 
-/* Panel: plansza + worek */
+/* Panel worka */
 
 .board-and-bag {
-    display: flex;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 1.2fr);
     gap: 16px;
+    align-items: flex-start;
 }
 
-/* Panel z workiem po prawej stronie */
-
 .bag-panel {
-    min-width: 140px;
-    max-width: 200px;
-    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: radial-gradient(circle at top left, #101623, #060910 60%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 14px;
 }
 
 .bag-title {
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    margin-bottom: 4px;
     opacity: 0.85;
+    margin-bottom: 6px;
 }
 
 .bag-letters {
-    font-family: monospace;
-    white-space: normal;
-    word-wrap: break-word;
-    line-height: 1.4;
-}
-
-/* Kafelek blanka – mała litera w wyraźnym obramowaniu */
-
-.tile-blank {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 70%;
-    min-height: 70%;
-    border: 2px solid #222;
-    border-radius: 4px;
-    font-size: 70%;
-    text-transform: lowercase;
+    font-family: "Courier New", monospace;
+    white-space: pre-wrap;
+    word-spacing: 4px;
+    font-size: 18px; /* powiększone ~30% względem bazowych 14px */
 }
 
 /* Responsywność */
@@ -431,10 +449,6 @@ td:nth-child(3) {
     }
 
     .board-and-bag {
-        flex-direction: column;
-    }
-
-    .bag-panel {
-        max-width: 100%;
+        grid-template-columns: 1fr;
     }
 }

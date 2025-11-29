@@ -181,7 +181,7 @@ $initialBag = [
     'Ś' => 1,
     'T' => 3,
     'U' => 2,
-    'W' => 4,
+    'W' => 4, // liczność 4, wartość 1 jest w PolishLetters::values()
     'Y' => 4,
     'Z' => 5,
     'Ź' => 1,
@@ -348,14 +348,33 @@ $bagLetters = trim($bagLetters);
                     <?php endif; ?>
 
                     <?php
-                    $sumParts = [];
-                    $total    = 0;
+                    // częściowe sumy z poszczególnych słów
+                    $sumParts          = [];
+                    $totalFromDetails  = 0;
                     foreach ($lastMoveDetails as $d) {
-                        $sumParts[] = (string)$d['score'];
-                        $total     += $d['score'];
+                        $sumParts[]      = (string)$d['score'];
+                        $totalFromDetails += $d['score'];
+                    }
+
+                    // jeżeli wynik ruchu jest większy niż suma słów – to jest premia za 7 liter (bingo)
+                    $bingoBonus = null;
+                    if ($lastMoveScore !== null && $lastMoveScore > $totalFromDetails) {
+                        $bingoBonus = $lastMoveScore - $totalFromDetails;
                     }
                     ?>
-                    <li>Łącznie za ruch: <?=implode(' + ', $sumParts)?> = <?=$total?></li>
+
+                    <?php if ($bingoBonus !== null): ?>
+                        <li>Premia za wyłożenie 7 liter: <?=$bingoBonus?></li>
+                    <?php endif; ?>
+
+                    <?php
+                    $allParts = $sumParts;
+                    if ($bingoBonus !== null) {
+                        $allParts[] = (string)$bingoBonus;
+                    }
+                    $displayTotal = $lastMoveScore ?? $totalFromDetails;
+                    ?>
+                    <li>Łącznie za ruch: <?=implode(' + ', $allParts)?> = <?=$displayTotal?></li>
                 </ul>
             <?php endif; ?>
 
@@ -420,13 +439,24 @@ $bagLetters = trim($bagLetters);
                         <?php for ($r = 0; $r < 15; $r++): ?>
                             <div class="coord coord-row"><?=$r + 1?></div>
                             <?php for ($c = 0; $c < 15; $c++): ?>
+                                <?php $cell = $board->cells[$r][$c]; ?>
                                 <div class="cell <?=letterClass($board, $r, $c)?>">
-                                    <?php if ($board->cells[$r][$c]['letter']): ?>
-                                        <?php if (!empty($board->cells[$r][$c]['isBlank'])): ?>
-                                            <?php $ch = mb_strtolower($board->cells[$r][$c]['letter'], 'UTF-8'); ?>
+                                    <?php if ($cell['letter']): ?>
+                                        <?php if (!empty($cell['isBlank'])): ?>
+                                            <?php $ch = mb_strtolower($cell['letter'], 'UTF-8'); ?>
                                             <span class="tile-blank"><?=htmlspecialchars($ch)?></span>
                                         <?php else: ?>
-                                            <?=htmlspecialchars($board->cells[$r][$c]['letter'])?>
+                                            <div class="tile-inner">
+                                                <span class="tile-letter">
+                                                    <?=htmlspecialchars($cell['letter'])?>
+                                                </span>
+                                                <?php
+                                                $values = PolishLetters::values();
+                                                $upCh   = mb_strtoupper($cell['letter'], 'UTF-8');
+                                                $val    = $values[$upCh] ?? 0;
+                                                ?>
+                                                <span class="tile-score"><?=htmlspecialchars((string)$val)?></span>
+                                            </div>
                                         <?php endif; ?>
                                     <?php else: ?>
                                         &nbsp;
