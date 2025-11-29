@@ -3,6 +3,7 @@ require_once __DIR__.'/../src/Repositories.php';
 require_once __DIR__.'/../src/Board.php';
 require_once __DIR__.'/../src/Scorer.php';
 require_once __DIR__.'/../src/MoveParser.php';
+require_once __DIR__.'/../src/PolishLetters.php';
 
 $game_id = (int)($_GET['game_id'] ?? 0);
 $game = GameRepo::get($game_id);
@@ -26,110 +27,75 @@ $scores = [
     $game['player1_id'] => 0,
     $game['player2_id'] => 0,
 ];
-
 $err = null;
-$msg = null;
 
-// gracz "następny w kolejce"
+// Wyznacz gracza, który jest "następny w kolejce"
 $nextPlayer = $game['player1_id'];
 
-// wynik i szczegóły ostatniego ruchu
-$lastPlacement = null;
-
-/**
- * Klasa CSS pola planszy – premie / kafelek
- */
-function letterClass(Board $b, int $r, int $c): string
-{
-    if ($b->cells[$r][$c]['letter']) {
-        return 'tile';
-    }
-    $ps = $b->W[$r][$c];
-    $pl = $b->L[$r][$c];
-    if ($ps === 3) {
-        return 'ps3';
-    }
-    if ($ps === 2) {
-        return 'ps2';
-    }
-    if ($pl === 3) {
-        return 'pl3';
-    }
-    if ($pl === 2) {
-        return 'pl2';
-    }
-    return '';
-}
-
-/**
- * Format opisu jednego słowa do wyświetlenia:
- * np. EH = (1 + 3) * 3 = 12
- */
-function formatWordDetails(array $w): string
-{
-    $letters = $w['letters'] ?? [];
-    $parts   = [];
-
-    foreach ($letters as $info) {
-        $base  = (int)($info['base'] ?? 0);
-        $multL = (int)($info['multL'] ?? 1);
-
-        if ($multL > 1) {
-            $parts[] = $base . ' * ' . $multL;
-        } else {
-            $parts[] = (string)$base;
-        }
-    }
-
-    $sumExpr       = implode(' + ', $parts);
-    $wordMultiplier = (int)($w['wordMultiplier'] ?? 1);
-
-    if ($wordMultiplier > 1) {
-        // nawiasy tylko przy premii słownej
-        $formula = '(' . $sumExpr . ') * ' . $wordMultiplier;
-    } else {
-        $formula = $sumExpr;
-    }
-
-    $score = (int)($w['score'] ?? 0);
-    $word  = mb_strtoupper((string)($w['word'] ?? ''), 'UTF-8');
-
-    return $word . ' = ' . $formula . ' = ' . $score;
-}
-
-// Odtworzenie planszy, wyników oraz szczegółów ostatniego ruchu
+// Odtworzenie planszy i wyników z historii ruchów
 if (count($moves) > 0) {
     foreach ($moves as $m) {
-        if ($m['type'] === 'PLAY') {
+        if ($m['type'] === 'PLAY' && $m['position'] && $m['word']) {
             try {
-                $placement = $scorer->placeAndScore($m['position'], $m['word']);
-                if ($lastMove && $m['id'] === $lastMove['id']) {
-                    $lastPlacement = $placement;
-                }
+                $scorer->placeAndScore($m['position'], $m['word']);
             } catch (Throwable $e) {
                 $err = 'Błąd historycznego ruchu #'.$m['move_no'].': '.$e->getMessage();
-                $lastPlacement = null;
                 break;
             }
         }
 
-        // zaktualizuj wynik danego gracza
+        // Zaktualizuj wynik danego gracza
         $scores[$m['player_id']] = $m['cum_score'];
 
-        // wyznacz kolejnego gracza (naprzemienność)
+        // Naprzemienność graczy (wyjątki jak ENDGAME możesz dodać później)
         $nextPlayer = ($m['player_id'] == $game['player1_id'])
             ? $game['player2_id']
             : $game['player1_id'];
     }
 }
 
+// WYLICZANIE ZAWARTOŚCI "WORKA" NA PODSTAWIE PLANSZY
+$bagCounts = PolishLetters::bagCounts();
+$boardSize = 15; // klasyczna plansza 15x15
+
+for ($r = 0; $r < $boardSize; $r++) {
+    for ($c = 0; $c < $boardSize; $c++) {
+        $cell = $board->cells[$r][$c] ?? null;
+        if (!$cell || $cell['letter'] === null) {
+            continue;
+        }
+
+        // Jeżeli to blank, odejmujemy z worka "?", a nie literę, którą zastępuje
+        if (!empty($cell['isBlank'])) {
+            if (isset($bagCounts['?']) && $bagCounts['?'] > 0) {
+                $bagCounts['?']--;
+            }
+        } else {
+            $ch = $cell['letter'];
+            if (isset($bagCounts[$ch]) && $bagCounts[$ch] > 0) {
+                $bagCounts[$ch]--;
+            }
+        }
+    }
+}
+
+// Tekstowa reprezentacja worka: każda litera tyle razy, ile zostało w worku.
+$bagStringParts = [];
+$bagTotal = 0;
+foreach ($bagCounts as $ch => $cnt) {
+    if ($cnt > 0) {
+        $bagTotal += $cnt;
+        $bagStringParts[] = str_repeat($ch, $cnt);
+    }
+}
+$bagString = implode(' ', $bagStringParts);
+
 // Obsługa nowego ruchu
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
 
     try {
-        $parser = new MoveParser();
-        $pm     = $parser->parse(trim($_POST['raw']));
+        $pm = MoveParser::parse(trim($_POST['raw']));
 
         $score = 0;
         if ($pm->type === 'PLAY') {
@@ -138,6 +104,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         } elseif ($pm->type === 'EXCHANGE') {
             $score = 0;
         } elseif ($pm->type === 'PASS') {
+            $score = 0;
+        } elseif ($pm->type === 'ENDGAME') {
+            // Jeżeli masz specjalne zasady dla ENDGAME,
+            // można je tu dopisać. Na razie 0 punktów "z automatu".
             $score = 0;
         }
 
@@ -162,6 +132,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     } catch (Throwable $e) {
         $err = 'Błąd: '.$e->getMessage();
     }
+}
+
+// Helpers for rendering
+function letterClass(Board $b, int $r, int $c): string
+{
+    if ($b->cells[$r][$c]['letter']) {
+        return 'tile';
+    }
+    $ps = $b->W[$r][$c];
+    $pl = $b->L[$r][$c];
+    if ($ps === 3) {
+        return 'ps3';
+    }
+    if ($ps === 2) {
+        return 'ps2';
+    }
+    if ($pl === 3) {
+        return 'pl3';
+    }
+    if ($pl === 2) {
+        return 'pl2';
+    }
+    return '';
 }
 
 ?>
@@ -207,6 +200,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
                                     (wymiana: <?=htmlspecialchars($m['rack'])?>)
                                 </span>
                             <?php endif; ?>
+                            <?php if ($m['type'] === 'BADWORD'): ?>
+                                <span class="small error">(ruch nieprawidłowy)</span>
+                            <?php endif; ?>
                         </td>
                         <td><?=$m['score']?></td>
                         <td><?=$m['cum_score']?></td>
@@ -226,49 +222,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
                     <input type="hidden" name="game_id" value="<?=$game_id?>">
                     <button class="btn">Kwestionuj</button>
                 </form>
-            <?php endif; ?>
-
-            <?php if ($lastMove && $lastMove['type'] === 'PLAY' && $lastPlacement && !empty($lastPlacement->words)): ?>
-                <h3>Szczegóły punktacji tego ruchu</h3>
-                <ul>
-                    <?php
-                    $mainLines  = [];
-                    $crossLines = [];
-                    foreach ($lastPlacement->words as $wd) {
-                        $line = formatWordDetails($wd);
-                        if (($wd['kind'] ?? 'cross') === 'main') {
-                            $mainLines[] = $line;
-                        } else {
-                            $crossLines[] = $line;
-                        }
-                    }
-                    ?>
-                    <?php if (!empty($mainLines)): ?>
-                        <li>Słowo główne: <?=htmlspecialchars($mainLines[0])?></li>
-                    <?php endif; ?>
-
-                    <?php if (!empty($crossLines)): ?>
-                        <li>Krzyżówki:
-                            <ul>
-                                <?php foreach ($crossLines as $line): ?>
-                                    <li><?=htmlspecialchars($line)?></li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </li>
-                    <?php endif; ?>
-
-                    <?php
-                    $sumParts = [];
-                    foreach ($lastPlacement->words as $wd) {
-                        $sumParts[] = (string)($wd['score'] ?? 0);
-                    }
-                    $totalExpr = implode(' + ', $sumParts);
-                    if ($lastPlacement->bingoBonus > 0) {
-                        $totalExpr .= ' + '.$lastPlacement->bingoBonus.' (premia za bingo)';
-                    }
-                    ?>
-                    <li>Łącznie za ruch: <?=$totalExpr?> = <?=$lastPlacement->score?></li>
-                </ul>
             <?php endif; ?>
 
             <h3>Dodaj ruch</h3>
@@ -319,34 +272,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
 
             <?php $columns = range('A', 'O'); ?>
 
-            <div class="board-wrapper">
-                <div class="board-header">
-                    <div class="coord-corner"></div>
-                    <?php foreach ($columns as $col): ?>
-                        <div class="coord coord-col"><?=$col?></div>
-                    <?php endforeach; ?>
+            <div class="board-and-bag">
+                <div class="board-wrapper">
+                    <div class="board-header">
+                        <div class="coord-corner"></div>
+                        <?php foreach ($columns as $col): ?>
+                            <div class="coord coord-col"><?=$col?></div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="board board-grid">
+                        <?php for ($r = 0; $r < 15; $r++): ?>
+                            <div class="coord coord-row"><?=$r + 1?></div>
+                            <?php for ($c = 0; $c < 15; $c++): ?>
+                                <?php $cell = $board->cells[$r][$c]; ?>
+                                <div class="cell <?=letterClass($board, $r, $c)?>">
+                                    <?php if ($cell['letter']): ?>
+                                        <?php if (!empty($cell['isBlank'])): ?>
+                                            <span class="tile-blank">
+                                                <?=htmlspecialchars(mb_strtolower($cell['letter'], 'UTF-8'))?>
+                                            </span>
+                                        <?php else: ?>
+                                            <?=htmlspecialchars($cell['letter'])?>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        &nbsp;
+                                    <?php endif; ?>
+                                </div>
+                            <?php endfor; ?>
+                        <?php endfor; ?>
+                    </div>
                 </div>
 
-                <div class="board board-grid">
-                    <?php for ($r = 0; $r < 15; $r++): ?>
-                        <div class="coord coord-row"><?=$r + 1?></div>
-                        <?php for ($c = 0; $c < 15; $c++): ?>
-                            <?php $cell = $board->cells[$r][$c]; ?>
-                            <div class="cell <?=letterClass($board, $r, $c)?>">
-                                <?php if ($cell['letter']): ?>
-                                    <?php if (!empty($cell['isBlank'])): ?>
-                                        <span class="tile-blank">
-                                            <?=htmlspecialchars(mb_strtolower($cell['letter'], 'UTF-8'))?>
-                                        </span>
-                                    <?php else: ?>
-                                        <?=htmlspecialchars($cell['letter'])?>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    &nbsp;
-                                <?php endif; ?>
-                            </div>
-                        <?php endfor; ?>
-                    <?php endfor; ?>
+                <div class="bag-panel">
+                    <div class="bag-title">Worek</div>
+                    <?php if ($bagTotal > 0): ?>
+                        <p class="small">Pozostało płytek: <?=$bagTotal?></p>
+                        <p class="bag-letters"><?=htmlspecialchars($bagString)?></p>
+                        <p class="small">
+                            Każda litera powtórzona tyle razy, ile zostało jej w worku
+                            (stan liczony wyłącznie z tego, co leży na planszy).
+                        </p>
+                    <?php else: ?>
+                        <p class="small">Worek pusty – wszystkie płytki znajdują się na planszy.</p>
+                    <?php endif; ?>
                 </div>
             </div>
 
