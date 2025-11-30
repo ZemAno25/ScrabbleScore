@@ -81,7 +81,6 @@ function calculateLetterValue(string $letters): int
 // Obsługa nowego ruchu
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
-    $score_override = isset($_POST['score_override']) ? (int)$_POST['score_override'] : null;
 
     try {
         $raw_input = trim($_POST['raw']);
@@ -92,21 +91,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             $placement = $scorer->placeAndScore($pm->pos, $pm->word);
             $score     = $placement->score;
         } elseif ($pm->type === 'ENDGAME') {
-            // W przypadku ENDGAME:
-            // Jeśli podano override, używamy go. Umożliwia to ręczne wprowadzanie kar/premii.
-            if ($score_override !== null) {
-                 $score = $score_override;
+            // W przypadku ENDGAME: policz wartość stojaka jeśli została podana
+            if (!empty($pm->rack)) {
+                // Jeżeli w zapisie ENDGAME podano stojak, policz jego wartość.
+                $rackLetters = $pm->rack;
+                $val = calculateLetterValue($rackLetters);
+
+                // Odtwórz zawartość worka (plansza + zapisane stojaki w historii),
+                // aby poprawnie wykryć, czy mamy do czynienia z "bingo-like" end.
+                $initialBag = [
+                    'A' => 9,'Ą' => 1,'B' => 2,'C' => 3,'Ć' => 1,'D' => 3,'E' => 7,'Ę' => 1,
+                    'F' => 1,'G' => 2,'H' => 2,'I' => 8,'J' => 2,'K' => 3,'L' => 3,'Ł' => 2,
+                    'M' => 3,'N' => 5,'Ń' => 1,'O' => 6,'Ó' => 1,'P' => 3,'R' => 4,'S' => 4,
+                    'Ś' => 1,'T' => 3,'U' => 2,'W' => 4,'Y' => 4,'Z' => 5,'Ź' => 1,'Ż' => 1,'?' => 2,
+                ];
+
+                $remaining = $initialBag;
+                for ($r = 0; $r < 15; $r++) {
+                    for ($c = 0; $c < 15; $c++) {
+                        $cell = $board->cells[$r][$c];
+                        if ($cell['letter'] !== null) {
+                            $key = !empty($cell['isBlank']) ? '?' : mb_strtoupper($cell['letter'], 'UTF-8');
+                            if (isset($remaining[$key]) && $remaining[$key] > 0) {
+                                $remaining[$key]--;
+                            }
+                        }
+                    }
+                }
+
+                // Odejmij znane stojaki z historii ruchów
+                foreach ($moves as $mv) {
+                    if (empty($mv['rack'])) continue;
+                    $rackClean = str_replace(' ', '', $mv['rack']);
+                    $letters = mb_str_split($rackClean, 1, 'UTF-8');
+                    foreach ($letters as $lt) {
+                        $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
+                        if (isset($remaining[$key]) && $remaining[$key] > 0) {
+                            $remaining[$key]--;
+                        }
+                    }
+                }
+
+                $bagEmpty = true;
+                foreach ($remaining as $cnt) { if ($cnt > 0) { $bagEmpty = false; break; } }
+
+                $isBingoLike = false;
+                if ($lastMove && $lastMove['type'] === 'PLAY' && $lastMove['player_id'] == $player_id && $bagEmpty) {
+                    $isBingoLike = true;
+                }
+
+                $score = $isBingoLike ? ($val * 2) : $val;
             } else {
-                 // Jeśli nie podano override, ruch ENDGAME domyślnie ma 0 pkt
-                 $score = 0; 
+                // Brak override i brak stojaka w zapisie -> 0
+                $score = 0;
             }
         }
         // Dla PASS i EXCHANGE score jest 0 (zgodne z MoveParser)
         
-        // Zastosowanie nadpisanej punktacji (score_override) tylko dla ruchów specjalnych
-        if ($score_override !== null && $pm->type !== 'PLAY') {
-             $score = $score_override;
-        }
+           // Nie używamy już możliwości ręcznego nadpisywania punktów z formularza.
 
 
         $moveNo = count($moves) + 1;
@@ -124,6 +166,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             'score'     => $score,
             'cum_score' => $cum,
         ]);
+
+        // --- Automatyczne zasady końcowe (Quackle-like) ---
+        // Pobierz nową listę ruchów (zawiera już dodany ruch)
+        $moves = MoveRepo::byGame($game_id);
+
+        // pomocnicze: znajdź ostatni zapis stojaka dla gracza
+        $findLastRack = function(array $moves, int $forPlayerId, int $beforeIndex = null) {
+            // jeśli podano $beforeIndex, szukamy tylko we wcześniejszych ruchach
+            $max = is_int($beforeIndex) ? $beforeIndex : count($moves) - 1;
+            for ($i = $max; $i >= 0; $i--) {
+                if ($moves[$i]['player_id'] == $forPlayerId && !empty($moves[$i]['rack'])) {
+                    return $moves[$i]['rack'];
+                }
+            }
+            return null;
+        };
+
+        $calcLetters = function(?string $letters) {
+            if ($letters === null) return 0;
+            return calculateLetterValue($letters);
+        };
+
+        // Odtwórz zawartość worka po aktualnym stanie planszy (uwzględniając płytek
+        // na planszy oraz stojaki, które zostały zapisane w ruchach)
+        $initialBag = [
+            'A' => 9,'Ą' => 1,'B' => 2,'C' => 3,'Ć' => 1,'D' => 3,'E' => 7,'Ę' => 1,
+            'F' => 1,'G' => 2,'H' => 2,'I' => 8,'J' => 2,'K' => 3,'L' => 3,'Ł' => 2,
+            'M' => 3,'N' => 5,'Ń' => 1,'O' => 6,'Ó' => 1,'P' => 3,'R' => 4,'S' => 4,
+            'Ś' => 1,'T' => 3,'U' => 2,'W' => 4,'Y' => 4,'Z' => 5,'Ź' => 1,'Ż' => 1,'?' => 2,
+        ];
+
+        $remaining = $initialBag;
+        for ($r = 0; $r < 15; $r++) {
+            for ($c = 0; $c < 15; $c++) {
+                $cell = $board->cells[$r][$c];
+                if ($cell['letter'] !== null) {
+                    $key = !empty($cell['isBlank']) ? '?' : mb_strtoupper($cell['letter'], 'UTF-8');
+                    if (isset($remaining[$key]) && $remaining[$key] > 0) {
+                        $remaining[$key]--;
+                    }
+                }
+            }
+        }
+
+        // odejmij też litery z zapisanego stojaka (jeśli któryś ruch zawierał 'rack')
+        foreach ($moves as $mv) {
+            if (empty($mv['rack'])) continue;
+            $rackClean = str_replace(' ', '', $mv['rack']);
+            $letters = mb_str_split($rackClean, 1, 'UTF-8');
+            foreach ($letters as $lt) {
+                $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
+                if (isset($remaining[$key]) && $remaining[$key] > 0) {
+                    $remaining[$key]--;
+                }
+            }
+        }
+
+        $bagEmpty = true;
+        foreach ($remaining as $cnt) { if ($cnt > 0) { $bagEmpty = false; break; } }
+
+        // funkcja: czy ostatnie N ruchów to PASS?
+        $lastNPass = function(array $moves, int $n) {
+            if (count($moves) < $n) return false;
+            for ($i = count($moves) - $n; $i < count($moves); $i++) {
+                if ($moves[$i]['type'] !== 'PASS') return false;
+            }
+            return true;
+        };
+
+        // Pobierz aktualne kumulowane wyniki
+        $lastCum = MoveRepo::lastCumScores($game_id);
+
+        // 1) Bingo End (auto): ostatni ruch był PLAY i wyczyścił stojak gracza oraz worek jest pusty
+        if ($pm->type === 'PLAY' && isset($placement) && $placement->lettersPlaced > 0) {
+            // spróbuj ustalić długość stojaka PRZED wykonaniem ruchu
+            $preRack = $pm->rack ?? null;
+            if ($preRack === null) {
+                // szukamy ostatniego zapisu stojaka dla tego gracza przed nowym ruchem
+                $preRack = $findLastRack($moves, $player_id, count($moves) - 2);
+            }
+            if ($preRack !== null) {
+                $rackLen = mb_strlen($preRack, 'UTF-8');
+                if ($rackLen === $placement->lettersPlaced && $bagEmpty) {
+                    // mamy bingo end -> przyznaj premię zwycięzcy = 2x wartość stojaka przegranego
+                    $p1 = $game['player1_id'];
+                    $p2 = $game['player2_id'];
+                    $winner = $player_id;
+                    $loser  = ($winner === $p1) ? $p2 : $p1;
+
+                    $loserRack = $findLastRack($moves, $loser);
+                    if ($loserRack !== null) {
+                        $loserValue = $calcLetters($loserRack);
+                        $bonus = $loserValue * 2;
+                        $moveNo = count($moves) + 1;
+                        $cumWinner = ($lastCum[$winner] ?? 0) + $bonus;
+                        MoveRepo::add([
+                            'game_id'   => $game_id,
+                            'move_no'   => $moveNo,
+                            'player_id' => $winner,
+                            'raw_input' => 'ENDGAME (' . $loserRack . ')',
+                            'type'      => 'ENDGAME',
+                            'position'  => null,
+                            'word'      => null,
+                            'rack'      => $loserRack,
+                            'score'     => $bonus,
+                            'cum_score' => $cumWinner,
+                        ]);
+                    }
+                }
+            }
+        }
+
+        // 2) Pass Out End: trzy kolejne PASSy -> obaj gracze tracą wartość swoich stojaków
+        if ($lastNPass($moves, 3)) {
+            $p1 = $game['player1_id'];
+            $p2 = $game['player2_id'];
+            $r1 = $findLastRack($moves, $p1);
+            $r2 = $findLastRack($moves, $p2);
+            $moveNo = count($moves) + 1;
+            if ($r1 !== null) {
+                $v1 = $calcLetters($r1);
+                $cum1 = ($lastCum[$p1] ?? 0) - $v1;
+                MoveRepo::add([
+                    'game_id'   => $game_id,
+                    'move_no'   => $moveNo,
+                    'player_id' => $p1,
+                    'raw_input' => 'ENDGAME (' . $r1 . ')',
+                    'type'      => 'ENDGAME',
+                    'position'  => null,
+                    'word'      => null,
+                    'rack'      => $r1,
+                    'score'     => -$v1,
+                    'cum_score' => $cum1,
+                ]);
+                $moveNo++;
+            }
+            if ($r2 !== null) {
+                $v2 = $calcLetters($r2);
+                $cum2 = ($lastCum[$p2] ?? 0) - $v2;
+                MoveRepo::add([
+                    'game_id'   => $game_id,
+                    'move_no'   => $moveNo,
+                    'player_id' => $p2,
+                    'raw_input' => 'ENDGAME (' . $r2 . ')',
+                    'type'      => 'ENDGAME',
+                    'position'  => null,
+                    'word'      => null,
+                    'rack'      => $r2,
+                    'score'     => -$v2,
+                    'cum_score' => $cum2,
+                ]);
+            }
+        }
 
         header('Location: play.php?game_id='.$game_id);
         exit;
@@ -242,6 +437,19 @@ for ($r = 0; $r < 15; $r++) {
         }
     }
 }
+                // Odejmij także płytki, które pojawiają się w zapisanych polach `rack`
+                // z historii ruchów — wtedy nie powinny być uznawane za obecne w worku.
+                foreach ($moves as $mv) {
+                    if (empty($mv['rack'])) continue;
+                    $rackClean = str_replace(' ', '', $mv['rack']);
+                    $letters = mb_str_split($rackClean, 1, 'UTF-8');
+                    foreach ($letters as $lt) {
+                        $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
+                        if (isset($remaining[$key]) && $remaining[$key] > 0) {
+                            $remaining[$key]--;
+                        }
+                    }
+                }
 
 ksort($remaining, SORT_STRING);
 $bagLetters = '';
@@ -484,14 +692,7 @@ $bagLetters = trim($bagLetters);
             <?php endif; ?>
 
             <h3>Dodaj ruch</h3>
-            <p class="small">
-                Aby zastosować końcowe kary/premie (zgodnie z Quackle):
-                <ol>
-                    <li>Wprowadź **ostatni ruch PLAY** gracza kończącego.</li>
-                    <li>Wprowadź **ENDGAME** dla gracza, który **ma pozostałe płytki**. Użyj pola *Punkty* na wartość **ujemną** (karę). np. -9. Zapis ruchu: **ENDGAME (Ź)**.</li>
-                    <li>Wprowadź **ENDGAME** dla gracza, który **wyłożył wszystkie płytki**. Użyj pola *Punkty* na wartość **dodatnią** (premię). np. +18. Zapis ruchu: **ENDGAME (PREMIA)**.</li>
-                </ol>
-            </p>
+            
             <form method="post">
                 <div class="player-chooser">
                     <span class="player-chooser-label">Gracz wykonujący ruch</span>
@@ -522,11 +723,7 @@ $bagLetters = trim($bagLetters);
                 </label>
                 <input type="text" name="raw" required>
                 
-                <label>
-                    Punkty (Dla ruchów PLAY są obliczane. Używaj tylko do ręcznych korekt/ENDGAME):
-                </label>
-                <input type="number" name="score_override" placeholder="Opcjonalne dla korekt końcowych">
-
+                
                 <button class="btn" style="margin-top:8px">Zatwierdź</button>
             </form>
 

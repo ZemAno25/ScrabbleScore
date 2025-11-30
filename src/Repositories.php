@@ -173,7 +173,7 @@ class MoveRepo
         $stmt = Database::get()->prepare(
             'SELECT m.*, p.nick
              FROM moves m
-             JOIN players p ON p.id = m.player_id
+             LEFT JOIN players p ON p.id = m.player_id
              WHERE game_id = ?
              ORDER BY move_no'
         );

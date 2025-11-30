@@ -28,9 +28,40 @@ class MoveParser {
             $pm->type = 'EXCHANGE';
             return $pm;
         }
-        if ($upper === 'ENDGAME') {
-            $pm->type = 'ENDGAME';
-            return $pm;
+
+        // Obsługa zapisu ENDGAME oraz ENDGAME z opcjonalnym stojakiem, np. "ENDGAME (Ź)"
+        // Akceptujemy też zapis bez nawiasów: "ENDGAME Ź" (rzadziej spotykane).
+        $uTrim = trim($upper);
+        if (mb_substr($uTrim, 0, 7, 'UTF-8') === 'ENDGAME') {
+            // Jeżeli to dokładnie "ENDGAME" — zwróć prosty typ
+            if ($uTrim === 'ENDGAME') {
+                $pm->type = 'ENDGAME';
+                return $pm;
+            }
+
+            // Inne formy: z dodatkowymi tokenami — spróbuj wyłuskać stojak
+            $rest = trim(mb_substr($input, 7, null, 'UTF-8')); // oryginalny przypadek z zachowaniem diakrytyków
+            if ($rest !== '') {
+                // Usuń ewentualne nawiasy wokół listy liter
+                if (preg_match('/^\s*\((.*)\)\s*$/u', $rest, $m)) {
+                    $letters = $m[1];
+                } else {
+                    $letters = trim($rest);
+                }
+
+                // Normalizuj i waliduj ciąg liter (pozwalamy na spacje wewnątrz, usuniemy je)
+                $lettersClean = str_replace(' ', '', $letters);
+                if ($lettersClean !== '' && !preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $lettersClean)) {
+                    throw new InvalidArgumentException('Niepoprawne znaki w zapisie ENDGAME.');
+                }
+
+                $pm->type = 'ENDGAME';
+                if ($lettersClean !== '') {
+                    // zachowaj w oryginalnej formie (bez spacji) — parser i UI oczekują wielkich liter
+                    $pm->rack = mb_strtoupper($lettersClean, 'UTF-8');
+                }
+                return $pm;
+            }
         }
 
         // Tokenizacja po białych znakach
