@@ -1,57 +1,476 @@
+Napisz program do zapisu przebiegu rozgrywki dwóch zawodników w scrabble.
+Przy pisaniu program wykorzystywane ma być PHP 8.1+, PostgreSQL 14 oraz
+Apache 2.x.
+
+Przy pisaniu kodu należy w miarę możliwości wykorzystać lub adoptować
+rozwiązania opracowane przy budowie programu QUACKLE, którego kod jest
+dostępny na stronie https://github.com/quackle/quackle
+
+ScrabbleScore w odróżnieniu od QUACKLE ogranicza się do:
+- rejestracji rozgrywek w Scrabble,
+- automatycznego liczenia punktów,
+- prezentacji statystyk,
+- opcjonalnego importu gotowych gier z programu Quackle,
+- opcjonalnego sprawdzania poprawności słów w słowniku OSPS
+  (przy kwestionowaniu ruchu).
 
 
-Napisz program do zapisu przebiegu rozgrywki dwóch zawodników w scrabble. Przy pisaniu program wykorzystywane ma być PHP Version 8.1.2-1ubuntu2.22, PostgreSQL 14 i Apache 2.0.
-Przy pisaniu kodu staraj się wykorzystać lub adoptować rozwiązania opracowane przy budowie programu QACKLE, którego kod jest dostępny na stronie https://github.com/quackle/quackle
-ScrabbleScore w odróżnienieu od QUACKLE ogranicza się tylko do rejestracji rozgrywek w Scrabble i automatycznego liczeniu punktów.
+STRONA STARTOWA I MENU
+----------------------
 
-Strona startowa aplikacji powinna wyświetlać menu składające się z trzech opcji dostępnych po niśnięciu odpowiedniego przycisku:
+Strona startowa aplikacji powinna wyświetlać menu składające się z
+następujących opcji dostępnych po naciśnięciu odpowiedniego przycisku:
+
 1. Zarejestruj gracza.
-2. Zarejestruj przebieg gry
-3. Pokaż statystyki rozgrywek.     
+2. Zarejestruj przebieg gry.
+3. Pokaż statystyki rozgrywek.
+4. Wczytaj grę z Quackle.
 
- 
-Ad. 1 Opis rejestracji graczy:
-Prosta rejestracja gracza polega na zarejestrowaniu unikalnego nicka w tabeli bazy danych graczy.
+Po kliknięciu odpowiedniej opcji użytkownik przechodzi do właściwego
+ekranu funkcji.
 
-Ad. 2 Opis rejestracji przebiegu gry
-Rejestracja rozgrywki powinna rozpocząć się od utworzenia gry, tj. daty i godziny, wskazania uczestników (wcześniej zarejestrowanych już). Pierwszy gracz rozpoczyna grę.
-Ułożone słowa wprowadzane są w trybie tekstowym w konwencji programu QUACKLE: <rack> <pozycja> <słowo> dla zawodnika z rejestracją stojaka (rack) lub <pozycja> <słowo> dla zawodnika 
-bez rejstracji zawartości stojaka (rack). 
-Przy czym zawartość stojaka <rack> wprowadzana jest tylko dla jednego wybranego gracza, w tym przypadku dla Adama.
-<pozycja> oznacza współrzędne na planszy, gdzie wiersze są ponumerowane od 1 do 15, a kolumny oznaczone literami od "A" do "O". Układ współrzędnych planszy w ScrabbleScore ma być taki
-jak w Quackle, tj. cyfry oznaczają wiersze a litery kolumny. W oficjalnym polskim Scrabble jest odwrotnie i literami oznaczone są wiersze a cyframi kolmny. 
-Jeżeli współrzędne zaczynają się od cyfry to wyraz jest układany poziomo, a jeżeli od litery to pionowo.
-Wyrazy są odczytywane od lewej do prawej i od góry do dołu. Na tym etapie załóż, że wykładane słowa są poprawne, tzn. zgodne z oficjalnym słownikiem polskiej federacji scrabble. 
-Plik osps.dawg programu QUACKLE zawiera wykaz wszystkich polskich słów dozwolonych w grze przez polską federacją scrabble.
-Powyższy system współrzędnych układanych słów odnosi się tylko do wprowadzania ruchów i prezentacji planszy. Wewnątrz programu, jego logika powinna opierać się na współrzędnych liczbowych (X,Y),
-gdzie X i Y są liczbami całkowitymi od 0 do 14. X dla oznaczenia wierszy a Y dla oznaczenia kolumn.
-Zamiast oznaczenia pozycji mogą się pojawić dwa oznaczenia ruchów specjalnych takich jak PASS (rezygnacja z ruchu) i EXCHANGE (ruch polegający na wymianie płytek zamiast ich wykładania na planszy).
-Jeżeli układane słowo zawiera litery już wcześniej ułożone na planszy to w zapisie ruchu umieszcza je się w nawiasach (). Przykładowy zapis czterech pierwszych ruchów. Dla rozgrywki 
-zawodników Adam i Tomasz, przy założeniu że ruchy Adama rejestrowane są z zawartością stojaka (ang. rack) :
-1. ADAM WIJĘKRA 8F WIJĘ +10/10
-2. TOMASZ 7G BAGNO +37/37
-3. ADAM KARÓWA? K4 KAR(O) +10/20
-4. TOMASZ 8K MIRÓW +40/77
-5. ADAM PSWAWA? N6 PS(Ó)W +13/33
-6. TOMASZ O1 TANIMI +30/107
-....
-Nr i nick gracza oraz wartość punktowa ruchu  oraz wartość sumaryczna punktów zdobytych w grze  powinny być wyświetlane automatycznie przez aplikację po wprowadzeniu ruchu. Zatwierdzenie ruchu powinno 
-spowodować aktualizację wyświetlanej planszy z aktualnym stanem gry. Zapis gry należy prowadzić dużymi literami. Małej litery należy użyć przy wykładaniu "blanka" do ustalenia jaką literę zastępuje.
-Znak "?" w zapisie gry jest użuwany do oznaczania "blanka" na stojaku (rack).
 
-Po zarejestrowaniu gry ekran pokazujący powinien być podzielony na dwie części. Lewa część powinna pokazywać ułożone przez graczy słowa w kolejnych ruchach i ich wartość punktową. 
-Prawa część ekranu powinna wyświetlać aktualny zawartość planszy gry. Styl wizualny (themes) gry powinien być analogiczny jak użyty w raportach programu QUACKLE, którego kod jest dostępny na 
-Github https://github.com/quackle/quackle
-Funkcjonalność programu ScrabbleScore ma być ograniczona tylko do rejestracji poszczególnych ruchów graczy i wyliczeniu po każdym ruchu aktualnych wartości punktowych i wyświetlenia planszy z aktualnym
-stanem gry.
-Wszystkie dane dotyczące rozgrywki i poszczególnych ruchów powinny być zapisane w bazie danych PostgreSQL o nazwie scrabblegames. Do bazy scrabblegames posiada wszystkie prawa dostępu użytkownik scrabble_usr.
+1. REJESTRACJA GRACZA
+---------------------
 
-Ad. 3 Prezentacja statystyk z zapisanych gier.
-W ramach funkcjonalnośći prezentującej statystyk zarejestrowanych gier program powinien umożliwiać:
-- przeglądanie historycznych gier;
-- raporty ze statystykami:
-   - gry o największej sumie punktów;
-   - ruchy o największej liczbie punktów;
-   - ilości wyłożonych siódemek (specjalnie premiowanych ruchów) przez graczy.
-Rejestracja gry powinna być zgodna z zasadami opisanymi w przesłanym pliku: "Zasady gry w scrabble.rtf"
+Rejestracja gracza polega na zarejestrowaniu w bazie danych unikalnego
+nicka.
 
+Wymagania:
+- formularz z pojedynczym polem "Nick",
+- walidacja: nick nie może być pusty,
+- próba rejestracji istniejącego nicka powinna zwrócić czytelny błąd,
+- lista zarejestrowanych graczy może być wyświetlana informacyjnie na
+  stronie rejestracji.
+
+
+2. REJESTRACJA PRZEBIEGU GRY (RĘCZNA)
+-------------------------------------
+
+2.1. Tworzenie gry
+
+Rejestracja rozgrywki powinna rozpocząć się od utworzenia nowej gry:
+
+- użytkownik wybiera dwóch wcześniej zarejestrowanych graczy,
+- zapisywana jest data i godzina rozpoczęcia gry,
+- gra powstaje w bazie danych (tabela gier),
+- pierwszy gracz według założeń zaczyna partię.
+
+Po zapisaniu nowej gry użytkownik jest przenoszony na ekran "play",
+gdzie rejestrowane są kolejne ruchy.
+
+
+2.2. Notacja ruchów
+
+Ułożone słowa wprowadzane są w trybie tekstowym w konwencji programu
+Quackle.
+
+Podstawowe formy zapisu:
+
+- `<rack> <pozycja> <słowo>`
+- `<pozycja> <słowo>`
+
+Gdzie:
+
+- `<rack>` to zawartość stojaka gracza przed ruchem (opcjonalna).
+- `<pozycja>` oznacza współrzędne na planszy:
+  - wiersze numerowane od 1 do 15,
+  - kolumny oznaczone literami od A do O,
+  - konwencja Quackle:
+    - "8F" oznacza słowo poziome (wiersz 8, kolumna F),
+    - "F8" oznacza słowo pionowe (kolumna F, wiersz 8).
+- `<słowo>` to ciąg liter i nawiasów:
+
+  - litery podawane są wielkimi literami,
+  - mała litera w słowie oznacza blanka ustawionego na daną literę,
+  - znak "?" w części `<rack>` oznacza blanka na stojaku,
+  - litery już leżące na planszy ujmowane są w nawiasy, np. K4 KAR(O),
+  - litery w nawiasach muszą odpowiadać literom już leżącym na planszy
+    w danym miejscu; w przeciwnym razie ruch jest błędny.
+
+Przykładowe zapisy:
+
+- WIJĘKRA 8F WIJĘ
+- 7G BAGNO
+- K4 KAR(O)
+- PSWAWA? N6 PS(Ó)W
+
+Zawartość stojaka `<rack>` może być wprowadzana dla dowolnego ruchu,
+ale aplikacja nie wymusza rejestracji stojaka dla obu graczy. W praktyce
+często rejestruje się stojak tylko dla jednego, wybranego zawodnika.
+
+
+2.3. Typy ruchów
+
+Aplikacja obsługuje następujące typy ruchów:
+
+- PLAY
+  - standardowe wyłożenie słowa,
+  - zapis w notacji Quackle jak wyżej,
+  - aplikacja:
+    - kładzie nowe płytki na planszy zgodnie z zapisem z nawiasami,
+    - liczy punkty (premie literowe, słowne, bingo),
+    - zapisuje wynik częściowy i sumaryczny,
+    - aktualizuje planszę.
+
+- EXCHANGE
+  - wymiana płytek ze stojaka,
+  - zapis: "EXCHANGE" lub "<rack> EXCHANGE (<wymieniane>)",
+  - wynik punktowy ruchu wynosi 0,
+  - plansza się nie zmienia.
+
+- PASS
+  - opuszczenie kolejki,
+  - zapis: "PASS",
+  - wynik punktowy ruchu wynosi 0.
+
+- ENDGAME
+  - specjalny ruch używany do zapisu korekt końcowych według Quackle
+    (premie i kary za płytki pozostające na stojakach),
+  - punktacja może być dodatnia (premia) lub ujemna (kara),
+  - zapis ma formę "ENDGAME" z opisem w polu tekstowym, np.
+    "ENDGAME (Ź)", "ENDGAME (PREMIA)",
+  - aplikacja traktuje ENDGAME jako zwykły ruch z ręcznie podaną
+    liczbą punktów; nie próbuje automatycznie liczyć jego wartości.
+
+- BADWORD
+  - typ ruchu nadawany automatycznie po skutecznym zakwestionowaniu
+    ruchu PLAY,
+  - punkty za zakwestionowany ruch są anulowane,
+  - litery położone w tym ruchu są zdejmowane z planszy,
+  - ruch pozostaje w historii, ale ma typ BADWORD i wynik 0.
+
+
+2.4. Naprzemienność graczy
+
+Na ekranie rejestracji ruchu:
+
+- gracz wykonujący ruch wybierany jest za pomocą przełącznika
+  (radio button) z dwoma opcjami (gracz 1, gracz 2),
+- po zapisaniu ruchu domyślnie zaznaczany jest drugi gracz, tak aby
+  ruchy naprzemiennie przypisywały się kolejnym graczom,
+- w razie potrzeby użytkownik może ręcznie zmienić zaznaczenie
+  (np. dla ruchów specjalnych ENDGAME lub korekt).
+
+
+3. WYŚWIETLANIE BIEŻĄCEJ GRY
+----------------------------
+
+Po zarejestrowaniu gry ekran powinien być podzielony na dwie główne
+części:
+
+- lewa: lista ruchów wraz z punktacją,
+- prawa: aktualny stan planszy oraz panel z zawartością worka.
+
+
+3.1. Lista ruchów
+
+Wymagania dotyczące tabeli ruchów:
+
+- dla każdego ruchu wyświetlane są:
+  - numer ruchu,
+  - nick gracza,
+  - wprowadzony zapis (raw_input),
+  - przy ruchach typu EXCHANGE w nawiasie wypisywana jest zawartość
+    wymiany,
+  - przy ruchach typu BADWORD wyświetlany jest dopisek "(BADWORD)",
+  - liczba punktów zdobyta w danym ruchu (+pkt),
+  - suma punktów danego gracza po tym ruchu (Σ).
+
+- tabela jest automatycznie aktualizowana po dodaniu każdego ruchu.
+
+
+3.2. Plansza
+
+Plansza powinna odzwierciedlać standardowy układ Scrabble:
+
+- rozmiar 15 x 15 pól,
+- pola premiowe:
+  - premie literowe (podwójna i potrójna litera),
+  - premie słowne (podwójne i potrójne słowo),
+- układ współrzędnych zgodny z Quackle:
+  - wiersze numerowane od 1 do 15, wyświetlane z lewej strony planszy,
+  - kolumny oznaczone literami A–O, wyświetlane nad planszą.
+
+Wyświetlanie płytek:
+
+- każda płytka z literą:
+  - ma duży znak litery,
+  - w prawym dolnym rogu małym fontem wyświetlana jest wartość
+    punktowa litery zgodna z polskimi zasadami,
+- blank (pusta płytka):
+  - ma wartość 0 punktów,
+  - na planszy wyświetlany jest jako mała litera w kwadratowej ramce,
+  - sposób wyświetlania blanków jest stały i nie ulega dalszym
+    modyfikacjom.
+
+Styl wizualny (kolory pól, wygląd płytek) ma być zbliżony do raportów
+programu QUACKLE, przy zachowaniu przejrzystości i czytelności.
+
+Pod planszą znajduje się krótka legenda:
+- niebieskie pola – premie literowe,
+- czerwone pola – premie słowne.
+
+
+3.3. Worek z płytkami
+
+Po prawej stronie planszy wyświetlana jest "Zawartość worka".
+
+Założenia:
+
+- aplikacja zna zestaw startowy liter i liczby ich wystąpień
+  (polska wersja Scrabble, w tym litera W warta 1 punkt),
+- zawartość worka liczona jest tylko na podstawie płytek leżących
+  na planszy,
+- zawartość stojaków graczy nie jest uwzględniana,
+- dla każdej litery initialBag[literka] jest zmniejszana o liczbę
+  płytek tej litery znajdujących się na planszy,
+- blanki traktowane są jako znak "?" w worku, niezależnie od litery,
+  którą reprezentują na planszy.
+
+Wyświetlanie:
+
+- litery w worku wypisywane są w porządku alfabetycznym,
+- każda litera wypisywana jest tyle razy, ile sztuk pozostało w worku,
+- pomiędzy literami wstawiana jest spacja,
+- użyty jest powiększony font, aby zawartość worka była czytelna.
+
+
+3.4. Szczegóły punktacji ostatniego ruchu
+
+Dla ostatniego ruchu typu PLAY aplikacja wyświetla szczegóły punktacji:
+
+- słowo główne:
+  - format bez premii słownej:
+    "Słowo główne: MIKE = 2 + 1 + 2 + 1 = 6",
+  - format z premią słowną:
+    "Słowo główne: MIKE = (2 + 1 + 2 + 1) * 2 = 12",
+  - nawiasy pojawiają się tylko wtedy, gdy premia słowna jest większa
+    niż 1,
+  - w części "2 + 1 + 2 + 1" uwzględniane są premie literowe, np.
+    "2 * 2 + 1 + 3 * 2".
+
+- krzyżówki:
+  - każda krzyżówka wyświetlana jest w osobnej linii,
+  - stosowany jest ten sam schemat zapisu jak dla słowa głównego,
+  - przykładowo:
+    "JE = 3 + 1 = 4"
+    "EH = (1 + 3) * 3 = 12".
+
+- premia za wyłożenie siedmiu liter (bingo):
+  - jeśli wynik ruchu jest większy niż suma punktów za wszystkie
+    słowa, różnica traktowana jest jako premia za siedem liter,
+  - wyświetlana jest osobna linia:
+    "Premia za wyłożenie 7 liter: 50".
+
+- podsumowanie:
+  - linia "Łącznie za ruch: ..." wyświetla sumę składowych:
+    - wszystkich słów (główne + krzyżówki),
+    - ewentualnej premii za siedem liter,
+  - przykładowo:
+    "Łącznie za ruch: 4 + 12 + 12 = 28"
+    lub z premią:
+    "Łącznie za ruch: 12 + 4 + 12 + 50 = 78".
+
+
+4. KWESTIONOWANIE RUCHU
+------------------------
+
+Aplikacja umożliwia zakwestionowanie ostatniego ruchu typu PLAY na
+osobnej stronie "Kwestionowanie słowa".
+
+Założenia:
+
+- kwestionować można wyłącznie ostatni zapisany ruch danej gry,
+- jeśli ostatni ruch nie jest typem PLAY, kwestionowanie nie jest
+  możliwe.
+
+Działanie:
+
+- aplikacja odtwarza całą partię do stanu sprzed ostatniego ruchu oraz
+  ponownie analizuje ostatni ruch na tymczasowej planszy,
+- wyodrębniane są wszystkie słowa utworzone w tym ruchu
+  (słowo główne i krzyżówki),
+- dla każdego słowa wykonywane jest sprawdzenie w tabeli
+  `lexicon_words` (słownik OSPS).
+
+Wyniki:
+
+- gdy słownik nie zawiera co najmniej jednego z utworzonych słów:
+  - kwestionowanie jest "skuteczne",
+  - ostatni ruch ma zmieniany typ na BADWORD,
+  - punkty za ten ruch są anulowane (score ustawiane na 0),
+  - wynik sumaryczny gracza jest korygowany,
+  - litery położone w tym ruchu są zdejmowane z planszy,
+  - na ekranie kwestionowania wyświetlana jest lista błędnych słów.
+
+- gdy wszystkie słowa znajdują się w słowniku:
+  - kwestionowanie jest "nieskuteczne",
+  - historia gry i plansza pozostają bez zmian,
+  - na ekranie wyświetlana jest lista sprawdzonych słów.
+
+- w razie błędu podczas analizy:
+  - użytkownik otrzymuje komunikat o błędzie,
+  - nie są wprowadzane zmiany w historii gry.
+
+
+5. IMPORT PARTII Z QUACKLE
+---------------------------
+
+Aplikacja umożliwia wczytanie gotowej partii zapisanej w formacie GCG
+(raport z programu Quackle).
+
+Założenia:
+
+- użytkownik wkleja treść pliku GCG do formularza,
+- aplikacja parsuje zapis:
+  - odczytuje nazwy graczy,
+  - odczytuje kolejne ruchy (PLAY, PASS, EXCHANGE, ENDGAME),
+  - oblicza przebieg punktacji zgodnie z danymi z raportu,
+- użytkownik widzi podgląd listy ruchów z GCG:
+  - numer ruchu,
+  - gracz,
+  - typ ruchu,
+  - stojak (rack),
+  - pozycja,
+  - słowo / wymiana / opis premii końcowej,
+  - punkty za ruch,
+  - suma punktów.
+
+Następnie użytkownik może:
+
+- dostosować nicki graczy do istniejących w bazie,
+- wybrać tryb zapisu gry:
+  - QUACKLE (z osobnymi ruchami ENDGAME),
+  - PFS (zgodnie z zasadami PFS, choć matematycznie wyniki są takie
+    same),
+- wskazać datę i godzinę gry,
+- zatwierdzić import do bazy.
+
+Import:
+
+- jeśli w bazie istnieje już gra o tym samym identyfikatorze lub
+  sygnaturze, import jest blokowany, a użytkownik otrzymuje informację
+  o duplikacie,
+- w innym przypadku tworzona jest nowa gra, a wszystkie ruchy są
+  wstawiane do bazy w takiej formie, aby później można było je
+  wyświetlić analogicznie jak gry rejestrowane ręcznie.
+
+Przy grach importowanych korekta końcowa według Quackle reprezentowana
+jest przez ruchy typu ENDGAME. Użytkownik może przyjąć je jako jest
+i nie musi ponownie ręcznie liczyć premii.
+
+
+6. STATYSTYKI
+-------------
+
+Aplikacja udostępnia stronę ze statystykami rozgrywek, która korzysta
+z danych zapisanych w bazie.
+
+Zakres:
+
+- lista zarejestrowanych gier wraz z najważniejszymi informacjami
+  (np. identyfikator, gracze, wynik końcowy),
+- wyszukiwanie i prezentacja ruchów o najwyższej wartości punktowej,
+- statystyki dotyczące "siódemek" (bingo):
+  - zliczanie ruchów, w których gracz wyłożył siedem nowych płytek,
+  - przypisanie tych ruchów do konkretnych graczy.
+
+Szczegółowy zakres raportów może być rozwijany, ale minimalnie
+powinny być dostępne statystyki pozwalające ocenić:
+- którzy gracze są najaktywniejsi,
+- które ruchy były najwyżej punktowane,
+- ile siódemek zostało wyłożonych.
+
+
+7. SŁOWNIK OSPS I NARZĘDZIA POMOCNICZE
+--------------------------------------
+
+Do wykorzystania mechanizmu kwestionowania ruchów wymagany jest
+słownik Scrabble (OSPS) załadowany do tabeli `lexicon_words`.
+
+Narzędzia pomocnicze:
+
+- skrypt `export_osps` generujący plik tekstowy z listą słów,
+- skrypt `load_lexicon_words.py` wczytujący listę słów do bazy
+  PostgreSQL `scrabblegames` do tabeli:
+
+  CREATE TABLE lexicon_words (
+      word TEXT PRIMARY KEY
+  );
+
+Założenia:
+
+- słownik w pliku tekstowym w UTF-8, jedno słowo na linię,
+- słowa zapisywane w bazie wielkimi literami,
+- puste linie i komentarze (linie zaczynające się od "#") pomijane,
+- dostęp do bazy przez użytkownika `scrabble_usr` z odpowiednimi
+  uprawnieniami.
+
+
+8. ZASADY PUNKTACJI I KONIEC GRY
+--------------------------------
+
+Punktacja:
+
+- wartości liter są zgodne z polską wersją Scrabble,
+- litera W w polskiej wersji warta jest 1 punkt,
+- blank ma wartość 0,
+- premie literowe i słowne są stosowane zgodnie z układem planszy,
+- najpierw sumowane są wartości liter (uwzględniając premie literowe),
+  a następnie całość jest mnożona przez premię słowną,
+- za wyłożenie w jednym ruchu siedmiu nowych płytek gracz otrzymuje
+  dodatkowe 50 punktów (bingo).
+
+Zakończenie gry:
+
+- aplikacja pozwala odwzorować korekty końcowe według modelu Quackle
+  za pomocą ruchów typu ENDGAME,
+- możliwy scenariusz (zgodny z raportami Quackle):
+  - ostatni ruch PLAY gracza, który wyłożył wszystkie płytki,
+  - ruch ENDGAME z ujemnymi punktami dla gracza, któremu zostały
+    płytki na stojaku (kara),
+  - ruch ENDGAME z dodatnimi punktami dla gracza, który wyłożył
+    wszystkie płytki (premia).
+
+Aplikacja nie oblicza automatycznie wartości ruchów ENDGAME. Zakłada
+się, że poprawne wartości są wprowadzane ręcznie (dla gier rejestrowanych
+ręcznie) albo pochodzą z importu partii Quackle (dla gier importowanych).
+
+
+9. BAZA DANYCH I WYMAGANIA TECHNICZNE
+-------------------------------------
+
+Baza danych:
+
+- wszystkie dane dotyczące rozgrywek i poszczególnych ruchów muszą
+  być zapisane w bazie PostgreSQL o nazwie `scrabblegames`,
+- do bazy `scrabblegames` posiada wszystkie prawa dostępu użytkownik
+  `scrabble_usr`,
+- struktura bazy definiowana jest przez skrypt `sql/schema.sql` i
+  obejmuje co najmniej tabele:
+  - graczy,
+  - gier,
+  - ruchów,
+  - słownika `lexicon_words` (opcjonalnie, jeśli używany jest
+    mechanizm kwestionowania).
+
+Wymagania techniczne:
+
+- PHP 8.1 lub nowszy,
+- Apache 2.x lub zgodny serwer HTTP z obsługą PHP,
+- PostgreSQL 14 lub nowszy,
+- aplikacja korzysta z pliku `config.php` do konfiguracji połączenia
+  z bazą i ustawienia bazowego URL aplikacji,
+- katalog `public/` zawiera pliki dostępne z poziomu przeglądarki
+  (index.php, register_player.php, new_game.php, play.php,
+  import_quackle.php, stats.php, challenge.php),
+- katalog `src/` zawiera klasy domenowe (Board, Scorer, MoveParser,
+  QuackleImporter, Repositories itp.),
+- katalog `assets/` zawiera pliki CSS odpowiedzialne za wygląd
+  interfejsu.
+
+Całość aplikacji powinna działać jako narzędzie wspierające:
+- ręczną rejestrację i analizę partii Scrabble,
+- odtwarzanie rozgrywek z programu Quackle,
+- prowadzenie statystyk i prostych analiz wyników.
