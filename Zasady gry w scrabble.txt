@@ -96,10 +96,11 @@ Nowe słowa można tworzyć na pięć sposobów:
     4. Nowe słowo może także dodać literę do istniejącego słowa. 
     5. Ostatnia możliwość to „mostek” między dwiema lub więcej literami. 
 Zakończenie gry
-Gra kończy się, kiedy wszystkie płytki zostały wyjęte z woreczka, a jeden z graczy wykorzystał wszystkie płytki ze swojego stojaka. Gra kończy się także wtedy, gdy zostaną wykonane wszystkie możliwe ruchy i wszyscy gracze opuszczą dwie kolejki z rzędu. 
-Uwaga: Opuszczenie przez wszystkich graczy dwu kolejek z rzędu kończy grę niezależnie od tego jak wiele płytek pozostało jeszcze w woreczku i na stojakach.
-Po zsumowaniu wszystkich punktów wynik każdego gracza zmniejsza się o sumę punktów widniejących na płytkach pozostających na jego stojaku, a jeżeli jeden z graczy wykorzystał wszystkie płytki, jego wynik zwiększa się o sumę niewykorzystanych płytek wszystkich pozostałych uczestników gry. Przykład: jeśli graczowi nr 1 pozostały na stojaku litery Ż i B, jego wynik zostanie zmniejszony o 8 punktów. Gracz, który wykorzystał wszystkie płytki, dodaje sobie 8 punktów. 
-Pamiętaj - wynik gry może zależeć od ostatniej litery w woreczku! 
+Gra kończy się, kiedy wszystkie płytki zostały wyjęte z woreczka, a jeden z graczy wykorzystał wszystkie płytki ze swojego stojaka. Gra kończy się także wtedy, gdy zostaną wykonane wszystkie możliwe ruchy i wszyscy gracze opuszczą trzy kolejki z rzędu. 
+Uwaga: Opuszczenie przez wszystkich graczy trzech kolejek z rzędu kończy grę niezależnie od tego jak wiele płytek pozostało jeszcze w woreczku i na stojakach.
+Premie po zakońćzeniu gry wyznacza się zgodnie z zasadami zaimplementowanymi w grze quackle.
+Aktualny kod gry Quackle dostępny jest nagithub: https://github.com/quackle/quackle
+  
 Wyjaśnienie często niewłaściwie interpretowanych reguł
     • Jeżeli płytka styka się z inną płytką w sąsiednim polu, musi z nią tworzyć pełne słowo, podobnie jak w klasycznej krzyżówce. 
     • Słowo można w jednym ruchu przedłużyć z obu jego końców, tak jak w wyrazach PRÓBUJE i S-PRÓBUJE-MY. 

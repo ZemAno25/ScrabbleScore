@@ -3,6 +3,8 @@ require_once __DIR__.'/../src/Repositories.php';
 require_once __DIR__.'/../src/Board.php';
 require_once __DIR__.'/../src/Scorer.php';
 require_once __DIR__.'/../src/MoveParser.php';
+// Zakładam, że klasa z wartościami liter (PolishLetters) jest dostępna w zasięgu
+require_once __DIR__.'/../src/PolishLetters.php'; 
 
 $game_id = (int)($_GET['game_id'] ?? 0);
 $game = GameRepo::get($game_id);
@@ -54,24 +56,58 @@ if (count($moves) > 0) {
     }
 }
 
+/**
+ * Oblicza sumę punktów dla danego ciągu liter (Quackle/PFS).
+ * Wymaga dostępu do stałych z wartościami liter (PolishLetters::values()).
+ */
+function calculateLetterValue(string $letters): int
+{
+    $total = 0;
+    $values = PolishLetters::values();
+    // Normalizacja do wielkich liter, ponieważ tablica wartości używa wielkich liter
+    $letters = mb_strtoupper($letters, 'UTF-8'); 
+    
+    foreach (mb_str_split($letters, 1, 'UTF-8') as $letter) {
+        // Traktujemy pustą płytkę (?) jako 0 punktów
+        if ($letter === '?') {
+            $total += 0; 
+        } else {
+            $total += $values[$letter] ?? 0;
+        }
+    }
+    return $total;
+}
+
 // Obsługa nowego ruchu
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
+    $score_override = isset($_POST['score_override']) ? (int)$_POST['score_override'] : null;
 
     try {
-        $pm = MoveParser::parse(trim($_POST['raw']));
+        $raw_input = trim($_POST['raw']);
+        $pm = MoveParser::parse($raw_input);
 
         $score = 0;
         if ($pm->type === 'PLAY') {
             $placement = $scorer->placeAndScore($pm->pos, $pm->word);
             $score     = $placement->score;
-        } elseif ($pm->type === 'EXCHANGE') {
-            $score = 0;
-        } elseif ($pm->type === 'PASS') {
-            $score = 0;
         } elseif ($pm->type === 'ENDGAME') {
-            $score = 0;
+            // W przypadku ENDGAME:
+            // Jeśli podano override, używamy go. Umożliwia to ręczne wprowadzanie kar/premii.
+            if ($score_override !== null) {
+                 $score = $score_override;
+            } else {
+                 // Jeśli nie podano override, ruch ENDGAME domyślnie ma 0 pkt
+                 $score = 0; 
+            }
         }
+        // Dla PASS i EXCHANGE score jest 0 (zgodne z MoveParser)
+        
+        // Zastosowanie nadpisanej punktacji (score_override) tylko dla ruchów specjalnych
+        if ($score_override !== null && $pm->type !== 'PLAY') {
+             $score = $score_override;
+        }
+
 
         $moveNo = count($moves) + 1;
         $cum    = $scores[$player_id] + $score;
@@ -80,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             'game_id'   => $game_id,
             'move_no'   => $moveNo,
             'player_id' => $player_id,
-            'raw_input' => trim($_POST['raw']),
+            'raw_input' => $raw_input,
             'type'      => $pm->type,
             'position'  => $pm->pos ?? null,
             'word'      => $pm->word ?? null,
@@ -123,6 +159,7 @@ function letterClass(Board $b, int $r, int $c): string
 $lastMoveDetails = [];
 $lastMoveScore   = null;
 
+// ... (logika szczegółów ostatniego ruchu bez zmian) ...
 if ($lastMove && $lastMove['type'] === 'PLAY' && $lastMove['position'] && $lastMove['word']) {
     try {
         $tmpBoard  = new Board();
@@ -253,17 +290,75 @@ $bagLetters = trim($bagLetters);
                         <td><?=$m['move_no']?></td>
                         <td><?=htmlspecialchars($m['nick'])?></td>
                         <td>
-                            <?=htmlspecialchars($m['raw_input'])?>
+                            <?php
+                            
+                            $displayWord = '';
+                            if ($m['type'] === 'PLAY') {
+                                $parts = [];
+                                // Stojak (jeśli dostępny)
+                                if (!empty($m['rack'])) {
+                                    $parts[] = $m['rack'];
+                                }
+                                // Pozycja
+                                if (!empty($m['position'])) {
+                                    $parts[] = $m['position'];
+                                }
+                                // Słowo (kolumna 'word' w bazie ma już format z nawiasami)
+                                if (!empty($m['word'])) {
+                                    $parts[] = $m['word'];
+                                }
+                                $displayWord = htmlspecialchars(implode(' ', $parts));
+                                echo $displayWord;
+                            } elseif ($m['type'] === 'ENDGAME') {
+                                // Specjalne wyświetlanie końca gry
+                                $displayWord = 'ZAKOŃCZENIE GRY';
+                                echo "<strong>{$displayWord}</strong>";
+                            } else {
+                                // Dla PASS, EXCHANGE wyświetlamy po prostu typ ruchu.
+                                $displayWord = htmlspecialchars($m['type']);
+                                echo $displayWord;
+                            }
+                            ?>
+
                             <?php if ($m['type'] === 'EXCHANGE' && $m['rack']): ?>
                                 <span class="small">
                                     (wymiana: <?=htmlspecialchars($m['rack'])?>)
                                 </span>
                             <?php endif; ?>
+                            <?php 
+                            // Oznaczenie dodatkowych szczegółów, np. liter pozostałych na stojaku, dla ENDGAME
+                            if ($m['type'] === 'ENDGAME' && $m['raw_input']): 
+                                // Próba wyłuskania liter z surowego zapisu, jeśli zostały podane (np. dla ENDGAME (Ź))
+                                $rawEndgame = trim(str_ireplace('ENDGAME', '', $m['raw_input']));
+                                if ($rawEndgame) {
+                                    echo '<span class="small">';
+                                    echo htmlspecialchars($rawEndgame);
+                                    echo '</span>';
+                                }
+                            ?>
+                            <?php endif; ?>
                             <?php if ($m['type'] === 'BADWORD'): ?>
                                 <span class="small error">(BADWORD)</span>
                             <?php endif; ?>
                         </td>
-                        <td><?=$m['score']?></td>
+                        <td>
+                            <?php 
+                            // Kolorowanie punktacji końcowej
+                            if ($m['type'] === 'ENDGAME') {
+                                if ($m['score'] < 0) {
+                                    // Kara
+                                    echo '<span class="error">' . $m['score'] . '</span>';
+                                } elseif ($m['score'] > 0) {
+                                    // Premia
+                                    echo '<span class="success">' . $m['score'] . '</span>';
+                                } else {
+                                    echo $m['score'];
+                                }
+                            } else {
+                                echo $m['score'];
+                            }
+                            ?>
+                        </td>
                         <td><?=$m['cum_score']?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -273,7 +368,16 @@ $bagLetters = trim($bagLetters);
                 <h3>Kwestionowanie ostatniego ruchu</h3>
                 <p>
                     Ostatni ruch:
-                    <strong><?=htmlspecialchars($lastMove['raw_input'])?></strong>
+                    <strong>
+                        <?php
+                            // Używamy znormalizowanego wyświetlania dla czytelności zapisu
+                            $parts = [];
+                            if (!empty($lastMove['rack'])) { $parts[] = $lastMove['rack']; }
+                            if (!empty($lastMove['position'])) { $parts[] = $lastMove['position']; }
+                            if (!empty($lastMove['word'])) { $parts[] = $lastMove['word']; }
+                            echo htmlspecialchars(implode(' ', $parts));
+                        ?>
+                    </strong>
                     (gracz:
                     <?=htmlspecialchars($playersById[$lastMove['player_id']] ?? '')?>)
                 </p>
@@ -282,7 +386,8 @@ $bagLetters = trim($bagLetters);
                     <button class="btn">Kwestionuj</button>
                 </form>
             <?php endif; ?>
-
+            
+            <?php // ... (Szczegóły punktacji dla ruchu PLAY) ... ?>
             <?php if ($lastMove && $lastMove['type'] === 'PLAY' && !empty($lastMoveDetails) && $lastMoveScore !== null): ?>
                 <h3>Szczegóły punktacji tego ruchu</h3>
                 <ul>
@@ -379,6 +484,14 @@ $bagLetters = trim($bagLetters);
             <?php endif; ?>
 
             <h3>Dodaj ruch</h3>
+            <p class="small">
+                Aby zastosować końcowe kary/premie (zgodnie z Quackle):
+                <ol>
+                    <li>Wprowadź **ostatni ruch PLAY** gracza kończącego.</li>
+                    <li>Wprowadź **ENDGAME** dla gracza, który **ma pozostałe płytki**. Użyj pola *Punkty* na wartość **ujemną** (karę). np. -9. Zapis ruchu: **ENDGAME (Ź)**.</li>
+                    <li>Wprowadź **ENDGAME** dla gracza, który **wyłożył wszystkie płytki**. Użyj pola *Punkty* na wartość **dodatnią** (premię). np. +18. Zapis ruchu: **ENDGAME (PREMIA)**.</li>
+                </ol>
+            </p>
             <form method="post">
                 <div class="player-chooser">
                     <span class="player-chooser-label">Gracz wykonujący ruch</span>
@@ -405,10 +518,14 @@ $bagLetters = trim($bagLetters);
                 </div>
 
                 <label>
-                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "7G BAGNO", "K4 KAR(O)",
-                    "PASS", "EXCHANGE", "LK?RWSS EXCHANGE (RWSS)", "ENDGAME")
+                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "PASS", "ENDGAME (Ź)")
                 </label>
                 <input type="text" name="raw" required>
+                
+                <label>
+                    Punkty (Dla ruchów PLAY są obliczane. Używaj tylko do ręcznych korekt/ENDGAME):
+                </label>
+                <input type="number" name="score_override" placeholder="Opcjonalne dla korekt końcowych">
 
                 <button class="btn" style="margin-top:8px">Zatwierdź</button>
             </form>
