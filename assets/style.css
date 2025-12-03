@@ -258,7 +258,7 @@ td:nth-child(3) {
     padding: 8px;
     border-radius: 10px;
     width: 100%;
-    max-width: min(100%, 72vh);
+    max-width: 1000px; /* limit board width to a comfortable maximum */
     margin: 0 auto;
 }
 
@@ -351,7 +351,7 @@ td:nth-child(3) {
 
 .board-wrapper {
     width: 100%;
-    max-width: min(100%, 72vh);
+    max-width: 1000px; /* limit wrapper width to match board */
     margin: 0 auto;
 }
 

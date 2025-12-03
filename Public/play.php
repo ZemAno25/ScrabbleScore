@@ -468,117 +468,51 @@ $bagLetters = trim($bagLetters);
     <meta charset="utf-8">
     <title>Gra #<?=$game_id?></title>
     <link rel="stylesheet" href="../assets/style.css">
+    <style>
+     /* Three column layout: left (controls), middle (board), right (moves) */
+     /* Fix middle column to board width (1000px) and allocate remaining space to side panels
+         so the board keeps its size and side panels expand into previously unused space. */
+    .three-col { display: grid; grid-template-columns: 520px 1000px 760px; gap: 20px; align-items: start; }
+    .three-col .card { padding: 16px; box-sizing: border-box; }
+     /* Moves panel: scrollable list that shows latest moves at the bottom */
+    /* Allow the moves panel to grow vertically so scrolling isn't required by default */
+    .moves-list { max-height: none; overflow-y: visible; overflow-x: auto; }
+     /* Ensure the moves table uses table layout so all columns (score, cum) render correctly
+         and horizontal scrolling is available when needed. This targets only the moves table. */
+     .moves-list table { display: table; width: 100%; table-layout: auto; }
+    /* Keep board centered and bag under board */
+    .board-wrapper { display:block; }
+    /* Force stacking: board above, bag below */
+    .board-and-bag { display: block; }
+    /* Bag panel: full-width under board, centered and visually aligned with board */
+    .bag-panel { margin: 12px auto 0; max-width: min(100%, 72vh); text-align: center; }
+    .bag-panel .bag-title { margin-bottom: 6px; }
+    /* Scoring details: remove bullets and tighten spacing */
+    .scoring-details ul { list-style: none; padding: 0; margin: 0; }
+    .scoring-details li { margin: 6px 0; }
+    /* Ensure adding new moves doesn't scroll the whole page */
+    body { min-height: 100vh; }
+    @media (max-width: 1000px) {
+        .three-col { grid-template-columns: 1fr; }
+        .moves-list { max-height: 300px; }
+    }
+    </style>
 </head>
 <body>
 <div class="container">
-    <h1>
-        Gra #<?=$game_id?> —
-        <?=htmlspecialchars($playersById[$game['player1_id']] ?? '')?>
-        vs
-        <?=htmlspecialchars($playersById[$game['player2_id']] ?? '')?>
-    </h1>
 
     <?php if ($err): ?>
         <div class="card error"><?=$err?></div>
     <?php endif; ?>
 
-    <div class="grid">
-        <div class="card">
-            <h2>Ruchy</h2>
-            <table>
-                <tr>
-                    <th>#</th>
-                    <th>Gracz</th>
-                    <th>Zapis</th>
-                    <th>+pkt</th>
-                    <th>Σ</th>
-                </tr>
-                <?php foreach ($moves as $m): ?>
-                    <tr>
-                        <td><?=$m['move_no']?></td>
-                        <td><?=htmlspecialchars($m['nick'])?></td>
-                        <td>
-                            <?php
-                            
-                            $displayWord = '';
-                            if ($m['type'] === 'PLAY') {
-                                $parts = [];
-                                // Stojak (jeśli dostępny)
-                                if (!empty($m['rack'])) {
-                                    $parts[] = $m['rack'];
-                                }
-                                // Pozycja
-                                if (!empty($m['position'])) {
-                                    $parts[] = $m['position'];
-                                }
-                                // Słowo (kolumna 'word' w bazie ma już format z nawiasami)
-                                if (!empty($m['word'])) {
-                                    $parts[] = $m['word'];
-                                }
-                                $displayWord = htmlspecialchars(implode(' ', $parts));
-                                echo $displayWord;
-                            } elseif ($m['type'] === 'ENDGAME') {
-                                // Specjalne wyświetlanie końca gry
-                                $displayWord = 'ZAKOŃCZENIE GRY';
-                                echo "<strong>{$displayWord}</strong>";
-                            } else {
-                                // Dla PASS, EXCHANGE wyświetlamy po prostu typ ruchu.
-                                $displayWord = htmlspecialchars($m['type']);
-                                echo $displayWord;
-                            }
-                            ?>
-
-                            <?php if ($m['type'] === 'EXCHANGE' && $m['rack']): ?>
-                                <span class="small">
-                                    (wymiana: <?=htmlspecialchars($m['rack'])?>)
-                                </span>
-                            <?php endif; ?>
-                            <?php 
-                            // Oznaczenie dodatkowych szczegółów, np. liter pozostałych na stojaku, dla ENDGAME
-                            if ($m['type'] === 'ENDGAME' && $m['raw_input']): 
-                                // Próba wyłuskania liter z surowego zapisu, jeśli zostały podane (np. dla ENDGAME (Ź))
-                                $rawEndgame = trim(str_ireplace('ENDGAME', '', $m['raw_input']));
-                                if ($rawEndgame) {
-                                    echo '<span class="small">';
-                                    echo htmlspecialchars($rawEndgame);
-                                    echo '</span>';
-                                }
-                            ?>
-                            <?php endif; ?>
-                            <?php if ($m['type'] === 'BADWORD'): ?>
-                                <span class="small error">(BADWORD)</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <?php 
-                            // Kolorowanie punktacji końcowej
-                            if ($m['type'] === 'ENDGAME') {
-                                if ($m['score'] < 0) {
-                                    // Kara
-                                    echo '<span class="error">' . $m['score'] . '</span>';
-                                } elseif ($m['score'] > 0) {
-                                    // Premia
-                                    echo '<span class="success">' . $m['score'] . '</span>';
-                                } else {
-                                    echo $m['score'];
-                                }
-                            } else {
-                                echo $m['score'];
-                            }
-                            ?>
-                        </td>
-                        <td><?=$m['cum_score']?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </table>
-
+    <div class="three-col">
+        <div class="card left-panel">
             <?php if ($lastMove && $lastMove['type'] === 'PLAY'): ?>
                 <h3>Kwestionowanie ostatniego ruchu</h3>
                 <p>
                     Ostatni ruch:
                     <strong>
                         <?php
-                            // Używamy znormalizowanego wyświetlania dla czytelności zapisu
                             $parts = [];
                             if (!empty($lastMove['rack'])) { $parts[] = $lastMove['rack']; }
                             if (!empty($lastMove['position'])) { $parts[] = $lastMove['position']; }
@@ -586,160 +520,101 @@ $bagLetters = trim($bagLetters);
                             echo htmlspecialchars(implode(' ', $parts));
                         ?>
                     </strong>
-                    (gracz:
-                    <?=htmlspecialchars($playersById[$lastMove['player_id']] ?? '')?>)
+                    (gracz: <?=htmlspecialchars($playersById[$lastMove['player_id']] ?? '')?>)
                 </p>
                 <form method="post" action="challenge.php" style="display:inline">
                     <input type="hidden" name="game_id" value="<?=$game_id?>">
                     <button class="btn">Kwestionuj</button>
                 </form>
+                <form method="post" action="challenge.php" style="display:inline;margin-left:8px">
+                    <input type="hidden" name="game_id" value="<?=$game_id?>">
+                    <input type="hidden" name="dry" value="1">
+                    <button class="btn btn-secondary">Sprawdź</button>
+                </form>
             <?php endif; ?>
-            
-            <?php // ... (Szczegóły punktacji dla ruchu PLAY) ... ?>
+
             <?php if ($lastMove && $lastMove['type'] === 'PLAY' && !empty($lastMoveDetails) && $lastMoveScore !== null): ?>
-                <h3>Szczegóły punktacji tego ruchu</h3>
-                <ul>
-                    <?php
-                    $crosses = [];
-                    $main = null;
-                    foreach ($lastMoveDetails as $d) {
-                        if ($d['kind'] === 'main' && $main === null) {
-                            $main = $d;
-                        } elseif ($d['kind'] === 'cross') {
-                            $crosses[] = $d;
-                        }
-                    }
-                    ?>
-
-                    <?php if ($main !== null): ?>
+                <div class="scoring-details">
+                    <h3>Szczegóły punktacji tego ruchu</h3>
+                    <ul>
                         <?php
-                        $expr = $main['letterExpr'];
-                        if ($main['wordMultiplier'] > 1) {
-                            $line = sprintf(
-                                '%s = (%s) * %d = %d',
-                                $main['word'],
-                                $expr,
-                                $main['wordMultiplier'],
-                                $main['score']
-                            );
-                        } else {
-                            $line = sprintf(
-                                '%s = %s = %d',
-                                $main['word'],
-                                $expr,
-                                $main['score']
-                            );
-                        }
-                        ?>
-                        <li>Słowo główne: <?=$line?></li>
-                    <?php endif; ?>
-
-                    <?php if (!empty($crosses)): ?>
-                        <li>Krzyżówki:</li>
-                        <?php foreach ($crosses as $c): ?>
-                            <?php
-                            $expr = $c['letterExpr'];
-                            if ($c['wordMultiplier'] > 1) {
-                                $line = sprintf(
-                                    '%s = (%s) * %d = %d',
-                                    $c['word'],
-                                    $expr,
-                                    $c['wordMultiplier'],
-                                    $c['score']
-                                );
-                            } else {
-                                $line = sprintf(
-                                    '%s = %s = %d',
-                                    $c['word'],
-                                    $expr,
-                                    $c['score']
-                                );
+                        $crosses = [];
+                        $main = null;
+                        foreach ($lastMoveDetails as $d) {
+                            if ($d['kind'] === 'main' && $main === null) {
+                                $main = $d;
+                            } elseif ($d['kind'] === 'cross') {
+                                $crosses[] = $d;
                             }
-                            ?>
-                            <li class="small"><?=$line?></li>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
+                        }
 
-                    <?php
-                    // częściowe sumy z poszczególnych słów
-                    $sumParts          = [];
-                    $totalFromDetails  = 0;
-                    foreach ($lastMoveDetails as $d) {
-                        $sumParts[]      = (string)$d['score'];
-                        $totalFromDetails += $d['score'];
-                    }
+                        if ($main !== null) {
+                            $expr = $main['letterExpr'];
+                            if ($main['wordMultiplier'] > 1) {
+                                $line = sprintf('%s = (%s) * %d = %d', $main['word'], $expr, $main['wordMultiplier'], $main['score']);
+                            } else {
+                                $line = sprintf('%s = %s = %d', $main['word'], $expr, $main['score']);
+                            }
+                            echo '<li>Słowo główne: ' . $line . '</li>';
+                        }
 
-                    // jeżeli wynik ruchu jest większy niż suma słów – to jest premia za 7 liter (bingo)
-                    $bingoBonus = null;
-                    if ($lastMoveScore !== null && $lastMoveScore > $totalFromDetails) {
-                        $bingoBonus = $lastMoveScore - $totalFromDetails;
-                    }
-                    ?>
+                        if (!empty($crosses)) {
+                            echo '<li>Krzyżówki:</li>';
+                            foreach ($crosses as $c) {
+                                $expr = $c['letterExpr'];
+                                if ($c['wordMultiplier'] > 1) {
+                                    $line = sprintf('%s = (%s) * %d = %d', $c['word'], $expr, $c['wordMultiplier'], $c['score']);
+                                } else {
+                                    $line = sprintf('%s = %s = %d', $c['word'], $expr, $c['score']);
+                                }
+                                echo '<li class="small">' . $line . '</li>';
+                            }
+                        }
 
-                    <?php if ($bingoBonus !== null): ?>
-                        <li>Premia za wyłożenie 7 liter: <?=$bingoBonus?></li>
-                    <?php endif; ?>
-
-                    <?php
-                    $allParts = $sumParts;
-                    if ($bingoBonus !== null) {
-                        $allParts[] = (string)$bingoBonus;
-                    }
-                    $displayTotal = $lastMoveScore ?? $totalFromDetails;
-                    ?>
-                    <li>Łącznie za ruch: <?=implode(' + ', $allParts)?> = <?=$displayTotal?></li>
-                </ul>
+                        $sumParts = [];
+                        $totalFromDetails = 0;
+                        foreach ($lastMoveDetails as $d) { $sumParts[] = (string)$d['score']; $totalFromDetails += $d['score']; }
+                        $bingoBonus = null;
+                        if ($lastMoveScore !== null && $lastMoveScore > $totalFromDetails) { $bingoBonus = $lastMoveScore - $totalFromDetails; }
+                        if ($bingoBonus !== null) { echo '<li>Premia za wyłożenie 7 liter: ' . $bingoBonus . '</li>'; }
+                        $allParts = $sumParts; if ($bingoBonus !== null) { $allParts[] = (string)$bingoBonus; }
+                        $displayTotal = $lastMoveScore ?? $totalFromDetails;
+                        echo '<li>Łącznie za ruch: ' . implode(' + ', $allParts) . ' = ' . $displayTotal . '</li>';
+                        ?>
+                    </ul>
+                </div>
             <?php endif; ?>
 
             <h3>Dodaj ruch</h3>
-            
             <form method="post">
                 <div class="player-chooser">
                     <span class="player-chooser-label">Gracz wykonujący ruch</span>
                     <div class="player-chooser-options">
                         <label class="player-radio">
-                            <input
-                                type="radio"
-                                name="player_id"
-                                value="<?=$game['player1_id']?>"
-                                <?=($nextPlayer == $game['player1_id']) ? 'checked' : ''?>
-                            >
+                            <input type="radio" name="player_id" value="<?=$game['player1_id']?>" <?=($nextPlayer == $game['player1_id']) ? 'checked' : ''?> >
                             <span><?=htmlspecialchars($playersById[$game['player1_id']] ?? '')?></span>
                         </label>
                         <label class="player-radio">
-                            <input
-                                type="radio"
-                                name="player_id"
-                                value="<?=$game['player2_id']?>"
-                                <?=($nextPlayer == $game['player2_id']) ? 'checked' : ''?>
-                            >
+                            <input type="radio" name="player_id" value="<?=$game['player2_id']?>" <?=($nextPlayer == $game['player2_id']) ? 'checked' : ''?> >
                             <span><?=htmlspecialchars($playersById[$game['player2_id']] ?? '')?></span>
                         </label>
                     </div>
                 </div>
 
-                <label>
-                    Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "PASS", "ENDGAME (Ź)")
-                </label>
+                <label>Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "PASS", "ENDGAME (Ź)")</label>
                 <input type="text" name="raw" required>
-                
-                
                 <button class="btn" style="margin-top:8px">Zatwierdź</button>
             </form>
 
             <form method="post" action="undo_move.php" style="display:inline-block;margin-top:8px">
                 <input type="hidden" name="game_id" value="<?=$game_id?>">
-                <button type="submit" name="undo_last" class="btn btn-secondary">
-                    Cofnij ostatni ruch
-                </button>
+                <button type="submit" name="undo_last" class="btn btn-secondary">Cofnij ostatni ruch</button>
             </form>
         </div>
 
-        <div class="card">
-            <h2>Plansza</h2>
-
+        <div class="card middle-panel">
+            <h2>Gra #<?=$game_id?> — <?=htmlspecialchars($playersById[$game['player1_id']] ?? '')?> vs <?=htmlspecialchars($playersById[$game['player2_id']] ?? '')?></h2>
             <?php $columns = range('A', 'O'); ?>
-
             <div class="board-and-bag">
                 <div class="board-wrapper">
                     <div class="board-header">
@@ -761,34 +636,79 @@ $bagLetters = trim($bagLetters);
                                             <span class="tile-blank"><?=htmlspecialchars($ch)?></span>
                                         <?php else: ?>
                                             <div class="tile-inner">
-                                                <span class="tile-letter">
-                                                    <?=htmlspecialchars($cell['letter'])?>
-                                                </span>
-                                                <?php
-                                                $values = PolishLetters::values();
-                                                $upCh   = mb_strtoupper($cell['letter'], 'UTF-8');
-                                                $val    = $values[$upCh] ?? 0;
-                                                ?>
+                                                <span class="tile-letter"><?=htmlspecialchars($cell['letter'])?></span>
+                                                <?php $values = PolishLetters::values(); $upCh = mb_strtoupper($cell['letter'], 'UTF-8'); $val = $values[$upCh] ?? 0; ?>
                                                 <span class="tile-score"><?=htmlspecialchars((string)$val)?></span>
                                             </div>
                                         <?php endif; ?>
-                                    <?php else: ?>
-                                        &nbsp;
-                                    <?php endif; ?>
+                                    <?php else: ?>&nbsp;<?php endif; ?>
                                 </div>
                             <?php endfor; ?>
                         <?php endfor; ?>
                     </div>
 
-                    <p class="small">
-                        Niebieskie pola — premie literowe, czerwone — słowne.
-                    </p>
+                    <p class="small">Niebieskie pola — premie literowe, czerwone — słowne.</p>
                 </div>
 
                 <div class="bag-panel">
                     <div class="bag-title">Zawartość worka</div>
                     <div class="bag-letters"><?=htmlspecialchars($bagLetters)?></div>
                 </div>
+            </div>
+        </div>
+
+        <div class="card right-panel">
+            <h2>Ruchy</h2>
+            <div class="moves-list">
+            <table>
+                <tr>
+                    <th>#</th>
+                    <th>Gracz</th>
+                    <th>Zapis</th>
+                    <th>+pkt</th>
+                    <th>Σ</th>
+                </tr>
+                <?php foreach ($moves as $m): ?>
+                    <tr>
+                        <td><?=$m['move_no']?></td>
+                        <td><?=htmlspecialchars($m['nick'])?></td>
+                        <td>
+                            <?php
+                            $displayWord = '';
+                            if ($m['type'] === 'PLAY') {
+                                $parts = [];
+                                if (!empty($m['rack'])) { $parts[] = $m['rack']; }
+                                if (!empty($m['position'])) { $parts[] = $m['position']; }
+                                if (!empty($m['word'])) { $parts[] = $m['word']; }
+                                $displayWord = htmlspecialchars(implode(' ', $parts));
+                                echo $displayWord;
+                            } elseif ($m['type'] === 'ENDGAME') {
+                                echo "<strong>ZAKOŃCZENIE GRY</strong>";
+                            } else {
+                                echo htmlspecialchars($m['type']);
+                            }
+                            ?>
+                            <?php if ($m['type'] === 'EXCHANGE' && $m['rack']): ?>
+                                <span class="small">(wymiana: <?=htmlspecialchars($m['rack'])?>)</span>
+                            <?php endif; ?>
+                            <?php if ($m['type'] === 'ENDGAME' && $m['raw_input']):
+                                $rawEndgame = trim(str_ireplace('ENDGAME', '', $m['raw_input']));
+                                if ($rawEndgame) { echo '<span class="small">' . htmlspecialchars($rawEndgame) . '</span>'; }
+                            ?>
+                            <?php endif; ?>
+                            <?php if ($m['type'] === 'BADWORD'): ?><span class="small error">(BADWORD)</span><?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($m['type'] === 'ENDGAME') {
+                                if ($m['score'] < 0) { echo '<span class="error">' . $m['score'] . '</span>'; }
+                                elseif ($m['score'] > 0) { echo '<span class="success">' . $m['score'] . '</span>'; }
+                                else { echo $m['score']; }
+                            } else { echo $m['score']; } ?>
+                        </td>
+                        <td><?=$m['cum_score']?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
             </div>
         </div>
     </div>
@@ -802,6 +722,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (input) {
         input.focus();
         input.select();
+    }
+    // Scroll moves list to bottom so latest moves are visible
+    var moves = document.querySelector('.moves-list');
+    if (moves) {
+        moves.scrollTop = moves.scrollHeight;
     }
 });
 </script>

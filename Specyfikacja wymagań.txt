@@ -360,6 +360,68 @@ Przy grach importowanych korekta końcowa według Quackle reprezentowana
 jest przez ruchy typu ENDGAME. Użytkownik może przyjąć je jako jest
 i nie musi ponownie ręcznie liczyć premii.
 
+ZASADY PUNKTACJI KOŃCOWEJ (implementacja Quackle)
+-------------------------------------------------
+
+Wersja aplikacji została rozszerzona o automatyczne wsparcie zasad
+punktacji końcowej zgodnych z Quackle (dla rozgrywek dwuosobowych).
+Opis implementowanego zachowania:
+
+- Bingo End (koniec wskutek wyłożenia wszystkich płytek przez gracza):
+  - Jeżeli ruch typu PLAY wyczyścił stojak gracza (liczba położonych
+    płytek równa była długości jego stojaka PRZED ruchem) i worek
+    jest pusty, zwycięzca otrzymuje premię równą 2 × wartości stojaka
+    przegranego (wartości liter zgodne z `src/PolishLetters::values()`).
+  - Aplikacja próbuje ustalić stojak PRZED ruchem na dwa sposoby:
+    1) preferuje stojak podany w zapisie ruchu PLAY (jeśli użytkownik
+       go wpisał),
+    2) w przeciwnym razie używa ostatniego zapisanego stojaka tego
+       gracza z historii ruchów sprzed obecnego ruchu.
+  - Premia jest zapisywana jako pojedynczy ruch `ENDGAME` dla zwycięzcy
+    o treści np. `ENDGAME (XYZ)` i wartości `score = 2 × value(litery)`.
+  - Jeżeli stojak przegranego nie jest znany (brak wcześniejszego
+    zapisu `rack`), aplikacja nie dodaje automatycznie premii — wymagana
+    jest ręczna korekta lub ręczne podanie `ENDGAME (rack)`.
+
+- Pass-Out End (koniec wskutek trzech kolejnych PASS):
+  - Jeśli trzy ostatnie ruchy to `PASS`, system traktuje to jako Pass-Out
+    End i dla każdego gracza, którego ostatni stojak jest znany, dodaje
+    ruch `ENDGAME` z ujemną wartością równą sumie wartości liter na jego
+    stojaku (czyli gracz traci te punkty).
+  - Każdy taki ujemny `ENDGAME` jest zapisywany oddzielnie (po jednym
+    dla każdego gracza z znanym stojakiem).
+
+- Odtwarzanie zawartości worka:
+  - Aby poprawnie wykryć sytuację "worek pusty" (konieczną do Bingo
+    End), aplikacja rekonstruuje zawartość worka na podstawie:
+    1) liczności startowej płytek (tablica `initialBag`),
+    2) płytek położonych na planszy,
+    3) liter zapisanych w polu `rack` we wszystkich ruchach historii.
+  - Z tego powodu pole `rack` zapisane w historii (np. w ręcznie
+    wpisanym `ENDGAME (Ź)` lub wcześniejszym zapisie PLAY) wpływa na
+    obliczanie, czy worek jest pusty.
+
+- Parser i UI:
+  - Parser akceptuje zapis `ENDGAME` oraz opcjonalnie `ENDGAME (LITERY)` lub
+    `ENDGAME LITERY` i zapisuje zawartość stojaka w polu `rack` ruchu.
+  - Usunięto pole formularza do ręcznego nadpisywania punktów
+    (`score_override`) i odpowiadające mu instrukcje — system preferuje
+    automatyczne obliczenia, a ręczna korekta powinna być rzadko potrzebna.
+
+Założenia i ograniczenia:
+- Automatyzacja końcowej punktacji wymaga, by wartość stojaków była
+  znana (tj. by w historii znajdował się zapis `rack` dla danego
+  gracza) — w przeciwnym razie automatyczne dodanie premii/kary może
+  nie nastąpić i będzie wymagana manualna korekta.
+- Implementacja opiera się na wartościach liter z `src/PolishLetters.php`.
+
+Przykładowy scenariusz:
+- Gracz A wykłada ostatni ruch PLAY i czyści stojak (wcześniej miał 3
+  litery), aplikacja sprawdza, że worek jest pusty (po odjęciu liter
+  z planszy i z zapisanych stojaków) i automatycznie dodaje `ENDGAME`
+  dla zwycięzcy z premią równą `2 × value(stojaka_przegranego)`.
+
+
 
 6. STATYSTYKI
 -------------

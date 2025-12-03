@@ -10,6 +10,7 @@ require_once __DIR__ . '/../src/Board.php';
 require_once __DIR__ . '/../src/Scorer.php';
 
 $game_id = (int)($_POST['game_id'] ?? $_GET['game_id'] ?? 0);
+$dry = !empty($_REQUEST['dry']); // jeśli true -> tylko sprawdzenie, bez modyfikacji bazy
 if ($game_id <= 0) {
     http_response_code(400);
     echo 'Brak identyfikatora gry.';
@@ -145,24 +146,34 @@ if (count($moves) === 0) {
             }
 
             if (count($illegalWords) > 0) {
-                // skuteczne kwestionowanie
-                $result = 'success';
-                $pdo->beginTransaction();
-                $upd = $pdo->prepare(
-                    'UPDATE moves
-                     SET type = :t,
-                         score = 0,
-                         cum_score = cum_score - :delta
-                     WHERE id = :id'
-                );
-                $upd->execute([
-                    ':t'     => 'BADWORD',
-                    ':delta' => (int)$lastMove['score'],
-                    ':id'    => (int)$lastMove['id'],
-                ]);
-                $pdo->commit();
+                // znaleziono nielegalne słowa
+                if ($dry) {
+                    // tylko sprawdzenie — nie modyfikujemy bazy
+                    $result = 'dry_success';
+                } else {
+                    // skuteczne kwestionowanie -> zmieniamy ruch na BADWORD i anulujemy punkty
+                    $result = 'success';
+                    $pdo->beginTransaction();
+                    $upd = $pdo->prepare(
+                        'UPDATE moves
+                         SET type = :t,
+                             score = 0,
+                             cum_score = cum_score - :delta
+                         WHERE id = :id'
+                    );
+                    $upd->execute([
+                        ':t'     => 'BADWORD',
+                        ':delta' => (int)$lastMove['score'],
+                        ':id'    => (int)$lastMove['id'],
+                    ]);
+                    $pdo->commit();
+                }
             } else {
-                $result = 'fail';
+                if ($dry) {
+                    $result = 'dry_fail';
+                } else {
+                    $result = 'fail';
+                }
             }
         } catch (Throwable $e) {
             $errorDuringPlacement = $e->getMessage();
@@ -208,6 +219,28 @@ $cfg = require __DIR__ . '/../config.php';
         <?php elseif ($result === 'fail'): ?>
             <p>Kwestionowanie było <strong>nieskuteczne</strong>. Wszystkie słowa
                 utworzone w ostatnim ruchu znajdują się w słowniku OSPS.</p>
+            <?php if (!empty($allWords)): ?>
+                <p>Sprawdzone słowa:</p>
+                <ul>
+                    <?php foreach ($allWords as $w): ?>
+                        <li><?= htmlspecialchars($w) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+        <?php elseif ($result === 'dry_success'): ?>
+            <p>Sprawdzenie (tylko podgląd) wykazało brak następujących słów w słowniku OSPS:</p>
+            <?php if (!empty($illegalWords)): ?>
+                <ul>
+                    <?php foreach ($illegalWords as $w): ?>
+                        <li><?= htmlspecialchars($w) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+        <?php elseif ($result === 'dry_fail'): ?>
+            <p>Sprawdzenie (tylko podgląd) — wszystkie słowa utworzone w ostatnim ruchu
+               znajdują się w słowniku OSPS.</p>
             <?php if (!empty($allWords)): ?>
                 <p>Sprawdzone słowa:</p>
                 <ul>
