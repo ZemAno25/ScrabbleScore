@@ -19,6 +19,7 @@ $base = $cfg['app']['base_url'] ?? '';
         <a class="btn" href="new_game.php">Zarejestruj przebieg gry</a>
         <a class="btn" href="stats.php">Pokaż statystyki rozgrywek</a>
         <a class="btn" href="import_quackle.php">Wczytaj grę z Quackle</a>
+        <a class="btn" href="export_quackle.php">Eksportuj do Quackle</a>
     </div>
 </div>
 </body>
