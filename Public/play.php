@@ -56,6 +56,79 @@ if (count($moves) > 0) {
     }
 }
 
+// recorder (who records the game) — may be null
+$recorderId = $game['recorder_player_id'] ?? null;
+
+// helper: find last recorded rack for a player (searching moves list)
+function findLastRackForPlayer(array $moves, int $playerId): ?string {
+    for ($i = count($moves) - 1; $i >= 0; $i--) {
+        if ($moves[$i]['player_id'] == $playerId && !empty($moves[$i]['rack'])) {
+            return $moves[$i]['rack'];
+        }
+    }
+    return null;
+}
+
+// helper: find last post_rack (remaining rack after a move) for a player
+function findLastPostRackForPlayer(array $moves, int $playerId): ?string {
+    for ($i = count($moves) - 1; $i >= 0; $i--) {
+        if ($moves[$i]['player_id'] == $playerId && !empty($moves[$i]['post_rack'])) {
+            return $moves[$i]['post_rack'];
+        }
+    }
+    return null;
+}
+
+// Compute default raw input prefill: if next player is the recorder, prefill their remaining rack
+$defaultRaw = '';
+$defaultRack = '';
+if ($recorderId !== null && $nextPlayer == $recorderId) {
+    // prefer the last known post_rack (remaining after recorder's previous move)
+    $lastRack = findLastPostRackForPlayer($moves, $recorderId);
+    $lastRackIsPost = true;
+    if ($lastRack === null) {
+        // fallback to any recorded rack value (pre-move rack)
+        $lastRack = findLastRackForPlayer($moves, $recorderId);
+        $lastRackIsPost = false;
+    }
+    if ($lastRack !== null) {
+        // If we have a post_rack (remaining after previous move), use it directly.
+        // Otherwise (we have only a pre-move rack), subtract board letters to compute remaining.
+        $boardCounts = [];
+        if (!$lastRackIsPost) {
+            // build board letter counts (treat blanks as '?')
+            for ($r = 0; $r < 15; $r++) {
+                for ($c = 0; $c < 15; $c++) {
+                    $cell = $board->cells[$r][$c];
+                    if ($cell['letter'] !== null) {
+                        $key = !empty($cell['isBlank']) ? '?' : mb_strtoupper($cell['letter'], 'UTF-8');
+                        if (!isset($boardCounts[$key])) $boardCounts[$key] = 0;
+                        $boardCounts[$key]++;
+                    }
+                }
+            }
+        }
+
+        $remaining = '';
+        $rackClean = str_replace(' ', '', $lastRack);
+        $letters = mb_str_split($rackClean, 1, 'UTF-8');
+        foreach ($letters as $lt) {
+            $k = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
+            if (!$lastRackIsPost && !empty($boardCounts[$k])) {
+                $boardCounts[$k]--;
+                continue; // this letter is already on board
+            }
+            $remaining .= $lt;
+        }
+
+        if ($remaining !== '') {
+            $defaultRaw = $remaining . ' ';
+        }
+        // prefill rack field with the last known remaining rack for recorder
+        $defaultRack = $lastRack;
+    }
+}
+
 /**
  * Oblicza sumę punktów dla danego ciągu liter (Quackle/PFS).
  * Wymaga dostępu do stałych z wartościami liter (PolishLetters::values()).
@@ -85,6 +158,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     try {
         $raw_input = trim($_POST['raw']);
         $pm = MoveParser::parse($raw_input);
+
+        // If a separate rack field was submitted, prefer it over any implicit rack
+        if (isset($_POST['rack'])) {
+            $rackRaw = trim((string)$_POST['rack']);
+            $rackClean = str_replace(' ', '', $rackRaw);
+            if ($rackClean !== '') {
+                // Validate: max 7 tiles and only allowed letters (Polish letters + '?')
+                if (mb_strlen($rackClean, 'UTF-8') > 7) {
+                    throw new Exception('Stojak nie może mieć więcej niż 7 płytek.');
+                }
+                if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $rackClean)) {
+                    throw new Exception('Stojak zawiera niedozwolone znaki. Dozwolone: litery i ? dla pustych płytek.');
+                }
+                $pm->rack = mb_strtoupper($rackClean, 'UTF-8');
+            }
+        }
 
         $score = 0;
         if ($pm->type === 'PLAY') {
@@ -151,10 +240,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
            // Nie używamy już możliwości ręcznego nadpisywania punktów z formularza.
 
 
+        // If the player is NOT the recorder and did not provide a rack, record the letters
+        // they just placed on the board as their (partial) rack state.
+        if ($pm->type === 'PLAY' && (empty($pm->rack) || $pm->rack === null) && $player_id !== $recorderId) {
+            if (isset($placement) && !empty($placement->placed)) {
+                $placedLetters = '';
+                foreach ($placement->placed as [$pr, $pc]) {
+                    $cell = $board->cells[$pr][$pc] ?? null;
+                    if ($cell && $cell['letter'] !== null) {
+                        $placedLetters .= $cell['letter'];
+                    }
+                }
+                if ($placedLetters !== '') {
+                    $pm->rack = $placedLetters;
+                }
+            }
+        }
+
         $moveNo = count($moves) + 1;
         $cum    = $scores[$player_id] + $score;
 
-        MoveRepo::add([
+        // Prepare list of words to check against OSPS: main word + any cross words
+        $checkWords = null;
+        if ($pm->type === 'PLAY' && isset($placement) && !empty($placement->wordDetails)) {
+            $checkWords = [];
+            foreach ($placement->wordDetails as $wd) {
+                if (!empty($wd['word'])) {
+                    $checkWords[] = $wd['word'];
+                }
+            }
+            // ensure main word is present as well
+            if (!in_array($pm->word, $checkWords, true) && !empty($pm->word)) {
+                $checkWords[] = $pm->word;
+            }
+        }
+
+        // For recorder moves with known rack: validate that the placed tiles come from the rack
+        $postRack = null;
+        if ($pm->type === 'PLAY' && $player_id === $recorderId && !empty($pm->rack) && isset($placement) && !empty($placement->placed)) {
+            // build rack counts
+            $rackClean = str_replace(' ', '', $pm->rack);
+            $rackLetters = mb_str_split($rackClean, 1, 'UTF-8');
+            $rackCounts = [];
+            foreach ($rackLetters as $rl) {
+                $key = ($rl === '?') ? '?' : mb_strtoupper($rl, 'UTF-8');
+                if (!isset($rackCounts[$key])) $rackCounts[$key] = 0;
+                $rackCounts[$key]++;
+            }
+
+            // consume tiles placed
+            foreach ($placement->placed as [$pr, $pc]) {
+                $cell = $board->cells[$pr][$pc] ?? null;
+                if (!$cell || $cell['letter'] === null) continue;
+                if (!empty($cell['isBlank'])) {
+                    $need = '?';
+                } else {
+                    $need = mb_strtoupper($cell['letter'], 'UTF-8');
+                }
+                if (empty($rackCounts[$need])) {
+                    throw new Exception('Ruch niemożliwy przy podanym stojaku — brak wymaganej płytki: ' . $need);
+                }
+                $rackCounts[$need]--;
+            }
+
+            // build remaining rack string
+            $postParts = [];
+            foreach ($rackCounts as $k => $cnt) {
+                for ($i = 0; $i < $cnt; $i++) $postParts[] = $k;
+            }
+            $postRack = implode('', $postParts);
+        }
+
+        $dataToAdd = [
             'game_id'   => $game_id,
             'move_no'   => $moveNo,
             'player_id' => $player_id,
@@ -165,7 +322,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             'rack'      => $pm->rack ?? null,
             'score'     => $score,
             'cum_score' => $cum,
-        ]);
+        ];
+        if ($postRack !== null) {
+            $dataToAdd['post_rack'] = $postRack;
+        }
+        if ($checkWords !== null) {
+            $dataToAdd['check_words'] = $checkWords;
+        }
+
+        MoveRepo::add($dataToAdd);
 
         // --- Automatyczne zasady końcowe (Quackle-like) ---
         // Pobierz nową listę ruchów (zawiera już dodany ruch)
@@ -602,7 +767,12 @@ $bagLetters = trim($bagLetters);
                 </div>
 
                 <label>Zapis ruchu (np. "WIJĘKRA 8F WIJĘ", "PASS", "ENDGAME (Ź)")</label>
-                <input type="text" name="raw" required>
+                <input type="text" name="raw" required value="<?=htmlspecialchars($defaultRaw)?>">
+
+                <label style="margin-top:8px">Stojak (oddzielne pole, opcjonalne)</label>
+                <input type="text" name="rack" id="rack-input" placeholder="np. ABCDEFG lub ?ABCD" value="<?=htmlspecialchars($defaultRack)?>">
+                <div id="rack-error" style="color:#a94442;margin-top:6px;display:none;font-size:0.9em"></div>
+
                 <button class="btn" style="margin-top:8px">Zatwierdź</button>
             </form>
 
@@ -727,6 +897,35 @@ document.addEventListener('DOMContentLoaded', function () {
     var moves = document.querySelector('.moves-list');
     if (moves) {
         moves.scrollTop = moves.scrollHeight;
+    }
+
+    // Client-side validation for separate rack field
+    var rackInput = document.getElementById('rack-input');
+    var rackError = document.getElementById('rack-error');
+    var moveForm = document.querySelector('form input[name="raw"]') ? document.querySelector('form input[name="raw"]').closest('form') : null;
+    var rackPattern = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u;
+    if (rackInput && moveForm) {
+        rackInput.addEventListener('input', function () {
+            rackError.style.display = 'none';
+            rackError.textContent = '';
+        });
+
+        moveForm.addEventListener('submit', function (e) {
+            var val = (rackInput.value || '').replace(/\s+/g, '');
+            if (val.length > 7) {
+                rackError.style.display = 'block';
+                rackError.textContent = 'Stojak nie może mieć więcej niż 7 płytek.';
+                e.preventDefault();
+                return false;
+            }
+            if (val.length > 0 && !rackPattern.test(val)) {
+                rackError.style.display = 'block';
+                rackError.textContent = 'Stojak zawiera niedozwolone znaki.';
+                e.preventDefault();
+                return false;
+            }
+            return true;
+        });
     }
 });
 </script>

@@ -7,7 +7,12 @@ require_once __DIR__.'/../src/MoveParser.php';
 $players = PlayerRepo::all();
 $game_id = null;
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['p1'],$_POST['p2'])) {
-    $game_id = GameRepo::create((int)$_POST['p1'], (int)$_POST['p2']);
+    $recorderId = null;
+    if (!empty($_POST['recorder'])) {
+        if ($_POST['recorder'] === 'p1') { $recorderId = (int)$_POST['p1']; }
+        elseif ($_POST['recorder'] === 'p2') { $recorderId = (int)$_POST['p2']; }
+    }
+    $game_id = GameRepo::create((int)$_POST['p1'], (int)$_POST['p2'], 'PFS', null, null, $recorderId);
     header('Location: play.php?game_id='.$game_id);
     exit;
 }
@@ -20,8 +25,28 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['p1'],$_POST['p2'])) {
 <div class="card">
 <form method="post">
 <div class="grid">
-<div><label>Gracz 1</label><select name="p1"><?php foreach($players as $p): ?><option value="<?=$p['id']?>"><?=htmlspecialchars($p['nick'])?></option><?php endforeach; ?></select></div>
-<div><label>Gracz 2</label><select name="p2"><?php foreach($players as $p): ?><option value="<?=$p['id']?>"><?=htmlspecialchars($p['nick'])?></option><?php endforeach; ?></select></div>
+<div>
+    <label>Gracz 1</label>
+    <select name="p1">
+        <?php foreach($players as $p): ?>
+            <option value="<?=$p['id']?>"><?=htmlspecialchars($p['nick'])?></option>
+        <?php endforeach; ?>
+    </select>
+</div>
+<div>
+    <label>Gracz 2</label>
+    <select name="p2">
+        <?php foreach($players as $p): ?>
+            <option value="<?=$p['id']?>"><?=htmlspecialchars($p['nick'])?></option>
+        <?php endforeach; ?>
+    </select>
+</div>
+</div>
+
+<h3>Kto prowadzi zapis gry?</h3>
+<div style="display:flex;gap:12px;align-items:center;margin-top:6px">
+    <label style="display:inline-flex;align-items:center;gap:8px"><input type="radio" name="recorder" value="p1" checked> Gracz 1</label>
+    <label style="display:inline-flex;align-items:center;gap:8px"><input type="radio" name="recorder" value="p2"> Gracz 2</label>
 </div>
 <button class="btn" style="margin-top:8px">Utwórz</button>
 </form>

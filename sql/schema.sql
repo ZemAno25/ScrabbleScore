@@ -1,5 +1,42 @@
 -- Table: public.games
 
+-- Ensure sequences exist for id default values
+CREATE SEQUENCE IF NOT EXISTS games_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS moves_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS players_id_seq START 1;
+
+-- Typ wyliczeniowy dla kolumny moves.type
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'move_type') THEN
+        CREATE TYPE move_type AS ENUM ('PLAY', 'PASS', 'EXCHANGE', 'ENDGAME', 'BADWORD');
+    END IF;
+END$$;
+
+-- Table: public.players
+
+-- DROP TABLE IF EXISTS public.players;
+
+CREATE TABLE IF NOT EXISTS public.players
+(
+    id integer NOT NULL DEFAULT nextval('players_id_seq'::regclass),
+    nick character varying(40) COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    CONSTRAINT players_pkey PRIMARY KEY (id),
+    CONSTRAINT players_nick_key UNIQUE (nick)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.players
+    OWNER to postgres;
+
+GRANT ALL ON TABLE public.players TO postgres;
+
+GRANT ALL ON TABLE public.players TO scrabble_usr;
+
+-- Table: public.games
+
 -- DROP TABLE IF EXISTS public.games;
 
 CREATE TABLE IF NOT EXISTS public.games
@@ -7,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.games
     id integer NOT NULL DEFAULT nextval('games_id_seq'::regclass),
     player1_id integer NOT NULL,
     player2_id integer NOT NULL,
+    recorder_player_id integer,
     started_at timestamp without time zone NOT NULL DEFAULT now(),
     scoring_mode character varying(20) COLLATE pg_catalog."default" NOT NULL DEFAULT 'PFS'::character varying,
     source_hash character varying(64) COLLATE pg_catalog."default",
@@ -16,6 +54,10 @@ CREATE TABLE IF NOT EXISTS public.games
         ON UPDATE NO ACTION
         ON DELETE RESTRICT,
     CONSTRAINT games_player2_id_fkey FOREIGN KEY (player2_id)
+        REFERENCES public.players (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE RESTRICT,
+    CONSTRAINT games_recorder_player_id_fkey FOREIGN KEY (recorder_player_id)
         REFERENCES public.players (id) MATCH SIMPLE
         ON UPDATE NO ACTION
         ON DELETE RESTRICT
@@ -39,6 +81,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_hash
     WITH (fillfactor=100, deduplicate_items=True)
     TABLESPACE pg_default
     WHERE source_hash IS NOT NULL;
+
+-- Index na recorder_player_id dla szybszych zapytań filtrujących po recorderze
+CREATE INDEX IF NOT EXISTS idx_games_recorder_player_id
+    ON public.games USING btree (recorder_player_id ASC NULLS LAST);
 
 -- Table: public.lexicon_words
 
@@ -74,6 +120,8 @@ CREATE TABLE IF NOT EXISTS public.moves
     "position" character varying(4) COLLATE pg_catalog."default",
     word text COLLATE pg_catalog."default",
     rack character varying(32) COLLATE pg_catalog."default",
+    osps boolean NOT NULL DEFAULT false,
+    post_rack character varying(32) COLLATE pg_catalog."default",
     score integer NOT NULL DEFAULT 0,
     cum_score integer NOT NULL DEFAULT 0,
     created_at timestamp without time zone NOT NULL DEFAULT now(),
@@ -107,6 +155,10 @@ CREATE INDEX IF NOT EXISTS idx_moves_game
     WITH (fillfactor=100, deduplicate_items=True)
     TABLESPACE pg_default;
 
+-- Index to quickly find moves that are/are not OSPS-valid
+CREATE INDEX IF NOT EXISTS idx_moves_osps
+    ON public.moves USING btree (osps DESC);
+
 -- Table: public.players
 
 -- DROP TABLE IF EXISTS public.players;
@@ -128,3 +180,36 @@ ALTER TABLE IF EXISTS public.players
 GRANT ALL ON TABLE public.players TO postgres;
 
 GRANT ALL ON TABLE public.players TO scrabble_usr;
+
+-- =========================
+-- Przykładowe dane testowe
+-- =========================
+
+-- Dodajemy dwóch graczy
+INSERT INTO players (nick, created_at) VALUES ('ALFA', now()) ON CONFLICT DO NOTHING;
+INSERT INTO players (nick, created_at) VALUES ('BETA', now()) ON CONFLICT DO NOTHING;
+
+-- Pobierz identyfikatory graczy
+-- (polecenia poniżej są przydatne przy ręcznym uruchamianiu skryptu w psql)
+-- CREATE GAME
+INSERT INTO games (player1_id, player2_id, recorder_player_id, scoring_mode, started_at)
+SELECT p1.id, p2.id, p1.id, 'PFS', now()
+FROM (SELECT id FROM players WHERE nick='ALFA' LIMIT 1) p1,
+     (SELECT id FROM players WHERE nick='BETA' LIMIT 1) p2
+ON CONFLICT DO NOTHING;
+
+-- Dodaj kilka przykładowych ruchów (przykład statyczny)
+-- Uwaga: zakłada istnienie game o id = 1 – jeżeli baza wygeneruje inne id, dopasuj ręcznie
+INSERT INTO moves (game_id, move_no, player_id, raw_input, type, position, word, rack, score, cum_score, osps, created_at)
+SELECT g.id, 1, p1.id, 'A1 AA', 'PLAY', '8H', 'AA', 'ABCDEFG', 10, 10, true, now()
+FROM (SELECT id FROM players WHERE nick='ALFA' LIMIT 1) p1,
+     (SELECT id FROM players WHERE nick='BETA' LIMIT 1) p2,
+     (SELECT id FROM games LIMIT 1) g
+ON CONFLICT DO NOTHING;
+
+INSERT INTO moves (game_id, move_no, player_id, raw_input, type, position, word, rack, score, cum_score, osps, created_at)
+SELECT g.id, 2, p2.id, 'PASS', 'PASS', NULL, NULL, NULL, 0, 10, true, now()
+FROM (SELECT id FROM players WHERE nick='ALFA' LIMIT 1) p1,
+     (SELECT id FROM players WHERE nick='BETA' LIMIT 1) p2,
+     (SELECT id FROM games LIMIT 1) g
+ON CONFLICT DO NOTHING;

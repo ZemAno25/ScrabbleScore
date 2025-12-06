@@ -67,19 +67,22 @@ class GameRepo
         int $p2,
         string $mode = 'PFS',
         ?string $startedAt = null,
-        ?string $sourceHash = null
+        ?string $sourceHash = null,
+        ?int $recorderId = null
     ): int {
         $pdo = Database::get();
         $stmt = $pdo->prepare(
             'INSERT INTO games(
                 player1_id,
                 player2_id,
+                recorder_player_id,
                 started_at,
                 scoring_mode,
                 source_hash
              ) VALUES(
                 :p1,
                 :p2,
+                :recorder,
                 COALESCE(:started_at, now()),
                 :mode,
                 :source_hash
@@ -89,6 +92,7 @@ class GameRepo
         $stmt->execute([
             'p1'          => $p1,
             'p2'          => $p2,
+            'recorder'    => $recorderId,
             'started_at'  => $startedAt,
             'mode'        => $mode,
             'source_hash' => $sourceHash,
@@ -136,6 +140,41 @@ class MoveRepo
     public static function add(array $data): int
     {
         $pdo = Database::get();
+        // compute OSPS validity flag.
+        // If caller provided 'check_words' (array or JSON string), require that ALL listed words exist in lexicon_words.
+        // Otherwise, fall back to checking the main 'word' field (if present). Non-word moves default to true.
+        $osps = true;
+        $wordsToCheck = [];
+        if (isset($data['check_words'])) {
+            $cw = $data['check_words'];
+            if (is_string($cw)) {
+                // allow JSON-encoded or comma-separated
+                $decoded = json_decode($cw, true);
+                if (is_array($decoded)) {
+                    $wordsToCheck = $decoded;
+                } else {
+                    $wordsToCheck = array_filter(array_map('trim', explode(',', $cw)));
+                }
+            } elseif (is_array($cw)) {
+                $wordsToCheck = $cw;
+            }
+        } elseif (!empty($data['word'])) {
+            $wordsToCheck = [ (string)$data['word'] ];
+        }
+
+        if (!empty($wordsToCheck)) {
+            foreach ($wordsToCheck as $w) {
+                $w = trim((string)$w);
+                if ($w === '') continue;
+                $stmt = $pdo->prepare('SELECT 1 FROM lexicon_words WHERE lower(word) = lower(?) LIMIT 1');
+                $stmt->execute([$w]);
+                $found = $stmt->fetchColumn();
+                if (!$found) { $osps = false; break; }
+            }
+        }
+        $data['osps'] = $osps;
+        // remove internal helper key so it doesn't get bound to SQL
+        if (isset($data['check_words'])) unset($data['check_words']);
         $stmt = $pdo->prepare(
             'INSERT INTO moves(
                 game_id,
@@ -148,6 +187,8 @@ class MoveRepo
                 rack,
                 score,
                 cum_score,
+                osps,
+                post_rack,
                 created_at
              ) VALUES(
                 :game_id,
@@ -160,11 +201,49 @@ class MoveRepo
                 :rack,
                 :score,
                 :cum_score,
+                :osps,
+                :post_rack,
                 now()
              )
              RETURNING id'
         );
-        $stmt->execute($data);
+
+        // Explicitly bind parameters with types to avoid empty-string -> boolean issues
+        $stmt->bindValue(':game_id', isset($data['game_id']) ? (int)$data['game_id'] : null, PDO::PARAM_INT);
+        $stmt->bindValue(':move_no', isset($data['move_no']) ? (int)$data['move_no'] : null, PDO::PARAM_INT);
+        $stmt->bindValue(':player_id', isset($data['player_id']) ? (int)$data['player_id'] : null, PDO::PARAM_INT);
+        $stmt->bindValue(':raw_input', isset($data['raw_input']) ? (string)$data['raw_input'] : null, PDO::PARAM_STR);
+        $stmt->bindValue(':type', isset($data['type']) ? (string)$data['type'] : null, PDO::PARAM_STR);
+
+        if (array_key_exists('position', $data) && $data['position'] !== null) {
+            $stmt->bindValue(':position', (string)$data['position'], PDO::PARAM_STR);
+        } else {
+            $stmt->bindValue(':position', null, PDO::PARAM_NULL);
+        }
+
+        if (array_key_exists('word', $data) && $data['word'] !== null) {
+            $stmt->bindValue(':word', (string)$data['word'], PDO::PARAM_STR);
+        } else {
+            $stmt->bindValue(':word', null, PDO::PARAM_NULL);
+        }
+
+        if (array_key_exists('rack', $data) && $data['rack'] !== null) {
+            $stmt->bindValue(':rack', (string)$data['rack'], PDO::PARAM_STR);
+        } else {
+            $stmt->bindValue(':rack', null, PDO::PARAM_NULL);
+        }
+
+        $stmt->bindValue(':score', isset($data['score']) ? (int)$data['score'] : 0, PDO::PARAM_INT);
+        $stmt->bindValue(':cum_score', isset($data['cum_score']) ? (int)$data['cum_score'] : 0, PDO::PARAM_INT);
+        $stmt->bindValue(':osps', isset($data['osps']) ? ($data['osps'] ? true : false) : false, PDO::PARAM_BOOL);
+        // post_rack (remaining tiles after the move), optional
+        if (array_key_exists('post_rack', $data) && $data['post_rack'] !== null) {
+            $stmt->bindValue(':post_rack', (string)$data['post_rack'], PDO::PARAM_STR);
+        } else {
+            $stmt->bindValue(':post_rack', null, PDO::PARAM_NULL);
+        }
+
+        $stmt->execute();
         return (int)$stmt->fetchColumn();
     }
 

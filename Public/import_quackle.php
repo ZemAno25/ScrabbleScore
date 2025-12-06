@@ -93,15 +93,27 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
             $internalWord = QuackleImporter::convertWordToInternal($board, $m->position, $m->word);
 
             try {
-                $scorer->placeAndScore($m->position, $internalWord);
+                $placement = $scorer->placeAndScore($m->position, $internalWord);
             } catch (Throwable $e) {
                 // Można zalogować błąd, ale nie przerywamy importu
+                $placement = null;
             }
 
             $data['position'] = $m->position;
             $data['word']     = $internalWord;
             $data['rack']     = $m->rack;
             $data['type']     = 'PLAY';
+
+            // prepare check_words: include main word and all cross words from placement details
+            if ($placement !== null && !empty($placement->wordDetails)) {
+                $check = [];
+                foreach ($placement->wordDetails as $wd) {
+                    if (!empty($wd['word'])) $check[] = $wd['word'];
+                }
+                if (!empty($check)) {
+                    $data['check_words'] = $check;
+                }
+            }
         } elseif ($m->type === 'EXCHANGE') {
             $data['rack'] = $m->rack;
             $data['type'] = 'EXCHANGE';
