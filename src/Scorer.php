@@ -36,6 +36,67 @@ class Scorer {
         $this->board = $board;
         $this->values = PolishLetters::values();
     }
+
+    /**
+     * Zwraca liczbę płytek każdego rodzaju leżących na planszy.
+     * Blanki sumujemy pod kluczem '?'.
+     *
+     * @return array<string,int>
+     */
+    public static function boardLetterCounts(Board $board): array {
+        $counts = [];
+        for ($r = 0; $r < $board->size; $r++) {
+            for ($c = 0; $c < $board->size; $c++) {
+                $cell = $board->cells[$r][$c];
+                if ($cell['letter'] === null) {
+                    continue;
+                }
+                $key = !empty($cell['isBlank'])
+                    ? '?'
+                    : mb_strtoupper($cell['letter'], 'UTF-8');
+                if (!isset($counts[$key])) {
+                    $counts[$key] = 0;
+                }
+                $counts[$key]++;
+            }
+        }
+        return $counts;
+    }
+
+    /**
+     * Upewnia się, że liczba płytek na planszy nie przekracza liczności z zestawu startowego.
+     *
+     * @throws Exception
+     */
+    public static function ensureWithinInitialBag(Board $board, array $initialBag): void {
+        $counts = self::boardLetterCounts($board);
+        foreach ($counts as $letter => $cnt) {
+            $limit = $initialBag[$letter] ?? 0;
+            if ($cnt > $limit) {
+                throw new Exception(
+                    sprintf(
+                        'Na planszy znajduje się za dużo płytek "%s": %d (limit %d).',
+                        $letter,
+                        $cnt,
+                        $limit
+                    )
+                );
+            }
+        }
+    }
+
+    /**
+     * Usuwa z planszy nowo położone płytki (np. gdy walidacja nie powiedzie się).
+     */
+    public static function revertPlacement(Board $board, PlacementResult $placement): void {
+        foreach ($placement->placed as [$r, $c]) {
+            $board->cells[$r][$c] = [
+                'letter'  => null,
+                'isBlank' => false,
+                'locked'  => false,
+            ];
+        }
+    }
     /**
      * Validates that the given rack supplies all newly placed tiles in $placement.
      * Returns the remaining rack string (letters left after the move) or throws

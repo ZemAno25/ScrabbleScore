@@ -151,6 +151,62 @@ function calculateLetterValue(string $letters): int
     return $total;
 }
 
+function validateRackString(string $rack): void
+{
+    $rackClean = str_replace(' ', '', $rack);
+    if ($rackClean === '') {
+        return;
+    }
+    if (mb_strlen($rackClean, 'UTF-8') > 7) {
+        throw new Exception('Stojak nie może mieć więcej niż 7 płytek.');
+    }
+    if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $rackClean)) {
+        throw new Exception('Stojak zawiera niedozwolone znaki. Dozwolone: litery i ? dla pustych płytek.');
+    }
+    if (substr_count($rackClean, '?') > 2) {
+        throw new Exception('Stojak zawiera zbyt wiele blanków (maksymalnie 2).');
+    }
+}
+
+function initialBag(): array
+{
+    return [
+        'A' => 9,
+        'Ą' => 1,
+        'B' => 2,
+        'C' => 3,
+        'Ć' => 1,
+        'D' => 3,
+        'E' => 7,
+        'Ę' => 1,
+        'F' => 1,
+        'G' => 2,
+        'H' => 2,
+        'I' => 8,
+        'J' => 2,
+        'K' => 3,
+        'L' => 3,
+        'Ł' => 2,
+        'M' => 3,
+        'N' => 5,
+        'Ń' => 1,
+        'O' => 6,
+        'Ó' => 1,
+        'P' => 3,
+        'R' => 4,
+        'S' => 4,
+        'Ś' => 1,
+        'T' => 3,
+        'U' => 2,
+        'W' => 4,
+        'Y' => 4,
+        'Z' => 5,
+        'Ź' => 1,
+        'Ż' => 1,
+        '?' => 2,
+    ];
+}
+
 // Obsługa nowego ruchu
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
     $player_id = (int)($_POST['player_id'] ?? 0);
@@ -168,13 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             $rackRaw = trim((string)$_POST['rack']);
             $rackClean = str_replace(' ', '', $rackRaw);
             if ($rackClean !== '') {
-                // Validate: max 7 tiles and only allowed letters (Polish letters + '?')
-                if (mb_strlen($rackClean, 'UTF-8') > 7) {
-                    throw new Exception('Stojak nie może mieć więcej niż 7 płytek.');
-                }
-                if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $rackClean)) {
-                    throw new Exception('Stojak zawiera niedozwolone znaki. Dozwolone: litery i ? dla pustych płytek.');
-                }
+                validateRackString($rackClean);
                 $rackUpper = mb_strtoupper($rackClean, 'UTF-8');
                 if (!$parsedRackProvided) {
                     $pm->rack = $rackUpper;
@@ -183,9 +233,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             }
         }
 
+        if (!empty($pm->rack)) {
+            validateRackString($pm->rack);
+        }
+
         $score = 0;
+        $placement = null;
         if ($pm->type === 'PLAY') {
             $placement = $scorer->placeAndScore($pm->pos, $pm->word);
+            try {
+                Scorer::ensureWithinInitialBag($board, initialBag());
+            } catch (Throwable $bagEx) {
+                Scorer::revertPlacement($board, $placement);
+                throw $bagEx;
+            }
             $score     = $placement->score;
         } elseif ($pm->type === 'ENDGAME') {
             // W przypadku ENDGAME: policz wartość stojaka jeśli została podana
@@ -196,12 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
 
                 // Odtwórz zawartość worka (plansza + zapisane stojaki w historii),
                 // aby poprawnie wykryć, czy mamy do czynienia z "bingo-like" end.
-                $initialBag = [
-                    'A' => 9,'Ą' => 1,'B' => 2,'C' => 3,'Ć' => 1,'D' => 3,'E' => 7,'Ę' => 1,
-                    'F' => 1,'G' => 2,'H' => 2,'I' => 8,'J' => 2,'K' => 3,'L' => 3,'Ł' => 2,
-                    'M' => 3,'N' => 5,'Ń' => 1,'O' => 6,'Ó' => 1,'P' => 3,'R' => 4,'S' => 4,
-                    'Ś' => 1,'T' => 3,'U' => 2,'W' => 4,'Y' => 4,'Z' => 5,'Ź' => 1,'Ż' => 1,'?' => 2,
-                ];
+                $initialBag = initialBag();
 
                 $remaining = $initialBag;
                 for ($r = 0; $r < 15; $r++) {
@@ -256,11 +312,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
                 foreach ($placement->placed as [$pr, $pc]) {
                     $cell = $board->cells[$pr][$pc] ?? null;
                     if ($cell && $cell['letter'] !== null) {
-                        $placedLetters .= $cell['letter'];
+                        $placedLetters .= !empty($cell['isBlank']) ? '?' : $cell['letter'];
                     }
                 }
                 if ($placedLetters !== '') {
                     $pm->rack = $placedLetters;
+                    validateRackString($pm->rack);
                 }
             }
         }
@@ -286,7 +343,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         // Validate rack usage whenever we know the rack (recorder or not)
         $postRack = null;
         if ($pm->type === 'PLAY' && !empty($pm->rack) && isset($placement) && !empty($placement->placed)) {
-            $postRack = Scorer::computeRemainingRackAfterPlacement($board, $placement, $pm->rack);
+            try {
+                $postRack = Scorer::computeRemainingRackAfterPlacement($board, $placement, $pm->rack);
+            } catch (Throwable $rackEx) {
+                Scorer::revertPlacement($board, $placement);
+                throw $rackEx;
+            }
         }
 
         $dataToAdd = [
@@ -333,12 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
 
         // Odtwórz zawartość worka po aktualnym stanie planszy (uwzględniając płytek
         // na planszy oraz stojaki, które zostały zapisane w ruchach)
-        $initialBag = [
-            'A' => 9,'Ą' => 1,'B' => 2,'C' => 3,'Ć' => 1,'D' => 3,'E' => 7,'Ę' => 1,
-            'F' => 1,'G' => 2,'H' => 2,'I' => 8,'J' => 2,'K' => 3,'L' => 3,'Ł' => 2,
-            'M' => 3,'N' => 5,'Ń' => 1,'O' => 6,'Ó' => 1,'P' => 3,'R' => 4,'S' => 4,
-            'Ś' => 1,'T' => 3,'U' => 2,'W' => 4,'Y' => 4,'Z' => 5,'Ź' => 1,'Ż' => 1,'?' => 2,
-        ];
+        $initialBag = initialBag();
 
         $remaining = $initialBag;
         for ($r = 0; $r < 15; $r++) {
@@ -528,41 +585,7 @@ if ($lastMove && $lastMove['type'] === 'PLAY' && $lastMove['position'] && $lastM
 }
 
 // Zawartość worka – zestaw startowy
-$initialBag = [
-    'A' => 9,
-    'Ą' => 1,
-    'B' => 2,
-    'C' => 3,
-    'Ć' => 1,
-    'D' => 3,
-    'E' => 7,
-    'Ę' => 1,
-    'F' => 1,
-    'G' => 2,
-    'H' => 2,
-    'I' => 8,
-    'J' => 2,
-    'K' => 3,
-    'L' => 3,
-    'Ł' => 2,
-    'M' => 3,
-    'N' => 5,
-    'Ń' => 1,
-    'O' => 6,
-    'Ó' => 1,
-    'P' => 3,
-    'R' => 4,
-    'S' => 4,
-    'Ś' => 1,
-    'T' => 3,
-    'U' => 2,
-    'W' => 4, // liczność 4, wartość 1 jest w PolishLetters::values()
-    'Y' => 4,
-    'Z' => 5,
-    'Ź' => 1,
-    'Ż' => 1,
-    '?' => 2,
-];
+$initialBag = initialBag();
 
 $remaining = $initialBag;
 for ($r = 0; $r < 15; $r++) {

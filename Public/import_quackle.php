@@ -32,6 +32,33 @@ function normalizeDatetimeFromInput(?string $val): ?string
     return $val;
 }
 
+function initialBag(): array
+{
+    return [
+        'A' => 9,'Ą' => 1,'B' => 2,'C' => 3,'Ć' => 1,'D' => 3,'E' => 7,'Ę' => 1,
+        'F' => 1,'G' => 2,'H' => 2,'I' => 8,'J' => 2,'K' => 3,'L' => 3,'Ł' => 2,
+        'M' => 3,'N' => 5,'Ń' => 1,'O' => 6,'Ó' => 1,'P' => 3,'R' => 4,'S' => 4,
+        'Ś' => 1,'T' => 3,'U' => 2,'W' => 4,'Y' => 4,'Z' => 5,'Ź' => 1,'Ż' => 1,'?' => 2,
+    ];
+}
+
+function validateRackStringImport(string $rack): void
+{
+    $rackClean = str_replace(' ', '', $rack);
+    if ($rackClean === '') {
+        return;
+    }
+    if (mb_strlen($rackClean, 'UTF-8') > 7) {
+        throw new RuntimeException('Stojak nie może mieć więcej niż 7 płytek (ruch z zapisu Quackle).');
+    }
+    if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $rackClean)) {
+        throw new RuntimeException('Stojak zawiera niedozwolone znaki (ruch z zapisu Quackle).');
+    }
+    if (substr_count($rackClean, '?') > 2) {
+        throw new RuntimeException('Stojak zawiera zbyt wiele blanków (maksymalnie 2).');
+    }
+}
+
 function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $startedAt, string $sourceHash): int
 {
     if ($sourceHash !== '') {
@@ -104,7 +131,28 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
             $data['position'] = $m->position;
             $data['word']     = $internalWord;
             $data['rack']     = $m->rack;
+            if (!empty($m->rack)) {
+                validateRackStringImport($m->rack);
+            }
             $data['type']     = 'PLAY';
+
+            if ($placement !== null) {
+                try {
+                    Scorer::ensureWithinInitialBag($board, initialBag());
+                } catch (Throwable $e) {
+                    Scorer::revertPlacement($board, $placement);
+                    throw new RuntimeException(
+                        sprintf(
+                            'Ruch #%d (%s %s %s) przekracza liczbę dostępnych płytek: %s',
+                            $currentMoveNo,
+                            $m->playerName,
+                            $m->position,
+                            $m->word,
+                            $e->getMessage()
+                        )
+                    );
+                }
+            }
 
             if ($placement !== null && !empty($m->rack) && !empty($placement->placed)) {
                 try {
@@ -139,9 +187,15 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
             }
         } elseif ($m->type === 'EXCHANGE') {
             $data['rack'] = $m->rack;
+            if (!empty($m->rack)) {
+                validateRackStringImport($m->rack);
+            }
             $data['type'] = 'EXCHANGE';
         } elseif ($m->type === 'PASS') {
             $data['rack'] = $m->rack;
+            if (!empty($m->rack)) {
+                validateRackStringImport($m->rack);
+            }
             $data['type'] = 'PASS';
         } elseif ($m->type === 'ENDGAME') {
             $data['word'] = $m->endRack ? '(' . $m->endRack . ')' : null;
