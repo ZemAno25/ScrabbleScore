@@ -72,9 +72,11 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
         $playerKey = normalizeNickUpper($m->playerName);
         $playerId  = $map[$playerKey] ?? $p1Id;
 
+        $currentMoveNo = $moveNo++;
+
         $data = [
             'game_id'   => $gameId,
-            'move_no'   => $moveNo++,
+            'move_no'   => $currentMoveNo,
             'player_id' => $playerId,
             'raw_input' => $m->rawLine,
             'type'      => $m->type,
@@ -103,6 +105,27 @@ function importQuackleGameToDatabase(QuackleGame $game, string $mode, ?string $s
             $data['word']     = $internalWord;
             $data['rack']     = $m->rack;
             $data['type']     = 'PLAY';
+
+            if ($placement !== null && !empty($m->rack) && !empty($placement->placed)) {
+                try {
+                    $postRack = Scorer::computeRemainingRackAfterPlacement($board, $placement, $m->rack);
+                    if ($postRack !== '') {
+                        $data['post_rack'] = $postRack;
+                    }
+                } catch (Throwable $e) {
+                    throw new RuntimeException(
+                        sprintf(
+                            'Ruch #%d (%s %s %s) nie zgadza się ze stojakiem "%s": %s',
+                            $currentMoveNo,
+                            $m->playerName,
+                            $m->position,
+                            $m->word,
+                            $m->rack,
+                            $e->getMessage()
+                        )
+                    );
+                }
+            }
 
             // prepare check_words: include main word and all cross words from placement details
             if ($placement !== null && !empty($placement->wordDetails)) {

@@ -36,6 +36,51 @@ class Scorer {
         $this->board = $board;
         $this->values = PolishLetters::values();
     }
+    /**
+     * Validates that the given rack supplies all newly placed tiles in $placement.
+     * Returns the remaining rack string (letters left after the move) or throws
+     * an Exception if the rack is missing any required tile.
+     *
+     * @throws Exception when rack does not contain required tile
+     */
+    public static function computeRemainingRackAfterPlacement(Board $board, PlacementResult $placement, string $rack): string {
+        $rackClean = str_replace(' ', '', $rack);
+        $letters = mb_str_split($rackClean, 1, 'UTF-8');
+        $rackCounts = [];
+        foreach ($letters as $lt) {
+            $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
+            if (!isset($rackCounts[$key])) {
+                $rackCounts[$key] = 0;
+            }
+            $rackCounts[$key]++;
+        }
+
+        foreach ($placement->placed as [$pr, $pc]) {
+            $cell = $board->cells[$pr][$pc] ?? null;
+            if (!$cell || $cell['letter'] === null) {
+                throw new Exception('Brak informacji o położonej płytce.');
+            }
+            if (!empty($cell['isBlank'])) {
+                $need = '?';
+            } else {
+                $need = mb_strtoupper($cell['letter'], 'UTF-8');
+            }
+            if (empty($rackCounts[$need])) {
+                throw new Exception('Ruch niemożliwy przy podanym stojaku — brak wymaganej płytki: ' . $need);
+            }
+            $rackCounts[$need]--;
+        }
+
+        $remaining = '';
+        foreach ($letters as $lt) {
+            $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
+            if (!empty($rackCounts[$key])) {
+                $remaining .= $lt;
+                $rackCounts[$key]--;
+            }
+        }
+        return $remaining;
+    }
 
     private function isLetter(string $ch): bool {
         return $ch !== '(' && $ch !== ')';

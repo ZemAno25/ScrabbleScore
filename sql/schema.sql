@@ -159,57 +159,5 @@ CREATE INDEX IF NOT EXISTS idx_moves_game
 CREATE INDEX IF NOT EXISTS idx_moves_osps
     ON public.moves USING btree (osps DESC);
 
--- Table: public.players
 
--- DROP TABLE IF EXISTS public.players;
-
-CREATE TABLE IF NOT EXISTS public.players
-(
-    id integer NOT NULL DEFAULT nextval('players_id_seq'::regclass),
-    nick character varying(40) COLLATE pg_catalog."default" NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT now(),
-    CONSTRAINT players_pkey PRIMARY KEY (id),
-    CONSTRAINT players_nick_key UNIQUE (nick)
-)
-
-TABLESPACE pg_default;
-
-ALTER TABLE IF EXISTS public.players
-    OWNER to postgres;
-
-GRANT ALL ON TABLE public.players TO postgres;
-
-GRANT ALL ON TABLE public.players TO scrabble_usr;
-
--- =========================
--- Przykładowe dane testowe
--- =========================
-
--- Dodajemy dwóch graczy
-INSERT INTO players (nick, created_at) VALUES ('ALFA', now()) ON CONFLICT DO NOTHING;
-INSERT INTO players (nick, created_at) VALUES ('BETA', now()) ON CONFLICT DO NOTHING;
-
--- Pobierz identyfikatory graczy
--- (polecenia poniżej są przydatne przy ręcznym uruchamianiu skryptu w psql)
--- CREATE GAME
-INSERT INTO games (player1_id, player2_id, recorder_player_id, scoring_mode, started_at)
-SELECT p1.id, p2.id, p1.id, 'PFS', now()
-FROM (SELECT id FROM players WHERE nick='ALFA' LIMIT 1) p1,
-     (SELECT id FROM players WHERE nick='BETA' LIMIT 1) p2
-ON CONFLICT DO NOTHING;
-
--- Dodaj kilka przykładowych ruchów (przykład statyczny)
--- Uwaga: zakłada istnienie game o id = 1 – jeżeli baza wygeneruje inne id, dopasuj ręcznie
-INSERT INTO moves (game_id, move_no, player_id, raw_input, type, position, word, rack, score, cum_score, osps, created_at)
-SELECT g.id, 1, p1.id, 'A1 AA', 'PLAY', '8H', 'AA', 'ABCDEFG', 10, 10, true, now()
-FROM (SELECT id FROM players WHERE nick='ALFA' LIMIT 1) p1,
-     (SELECT id FROM players WHERE nick='BETA' LIMIT 1) p2,
-     (SELECT id FROM games LIMIT 1) g
-ON CONFLICT DO NOTHING;
-
-INSERT INTO moves (game_id, move_no, player_id, raw_input, type, position, word, rack, score, cum_score, osps, created_at)
-SELECT g.id, 2, p2.id, 'PASS', 'PASS', NULL, NULL, NULL, 0, 10, true, now()
-FROM (SELECT id FROM players WHERE nick='ALFA' LIMIT 1) p1,
-     (SELECT id FROM players WHERE nick='BETA' LIMIT 1) p2,
-     (SELECT id FROM games LIMIT 1) g
-ON CONFLICT DO NOTHING;
+-- End of schema (no sample data included)

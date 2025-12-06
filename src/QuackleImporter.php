@@ -81,11 +81,15 @@ class QuackleImporter
         $move->playerName = $player;
 
         // ENDGAME: zaczyna się od nawiasu (LITERY)
-        if (preg_match('/^\(([^)]+)\)\s+\+?(-?\d+)\s+(\d+)$/u', $rest, $m)) {
+        if (preg_match('/^(?:([A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+)\s+)?\(([^)]+)\)\s+\+?(-?\d+)\s+(\d+)$/u', $rest, $m)) {
             $move->type    = 'ENDGAME';
-            $move->endRack = $m[1];
-            $move->score   = (int)$m[2];
-            $move->total   = (int)$m[3];
+            $preRack       = $m[1] ?? null;
+            $move->endRack = $m[2];
+            $move->score   = (int)$m[3];
+            $move->total   = (int)$m[4];
+            if ($preRack !== null && $preRack !== '') {
+                $move->rack = mb_strtoupper($preRack, 'UTF-8');
+            }
             return $move;
         }
 

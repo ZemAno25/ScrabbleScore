@@ -159,7 +159,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         $raw_input = trim($_POST['raw']);
         $pm = MoveParser::parse($raw_input);
 
-        // If a separate rack field was submitted, prefer it over any implicit rack
+        $parsedRackProvided = !empty($pm->rack);
+
+        // If a separate rack field was submitted, use it only when the notation
+        // itself did not already include a rack. This prevents stale prefilled
+        // values from silently overriding an explicit rack coming from the raw move.
         if (isset($_POST['rack'])) {
             $rackRaw = trim((string)$_POST['rack']);
             $rackClean = str_replace(' ', '', $rackRaw);
@@ -171,7 +175,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
                 if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $rackClean)) {
                     throw new Exception('Stojak zawiera niedozwolone znaki. Dozwolone: litery i ? dla pustych płytek.');
                 }
-                $pm->rack = mb_strtoupper($rackClean, 'UTF-8');
+                $rackUpper = mb_strtoupper($rackClean, 'UTF-8');
+                if (!$parsedRackProvided) {
+                    $pm->rack = $rackUpper;
+                    $parsedRackProvided = true;
+                }
             }
         }
 
@@ -275,40 +283,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             }
         }
 
-        // For recorder moves with known rack: validate that the placed tiles come from the rack
+        // Validate rack usage whenever we know the rack (recorder or not)
         $postRack = null;
-        if ($pm->type === 'PLAY' && $player_id === $recorderId && !empty($pm->rack) && isset($placement) && !empty($placement->placed)) {
-            // build rack counts
-            $rackClean = str_replace(' ', '', $pm->rack);
-            $rackLetters = mb_str_split($rackClean, 1, 'UTF-8');
-            $rackCounts = [];
-            foreach ($rackLetters as $rl) {
-                $key = ($rl === '?') ? '?' : mb_strtoupper($rl, 'UTF-8');
-                if (!isset($rackCounts[$key])) $rackCounts[$key] = 0;
-                $rackCounts[$key]++;
-            }
-
-            // consume tiles placed
-            foreach ($placement->placed as [$pr, $pc]) {
-                $cell = $board->cells[$pr][$pc] ?? null;
-                if (!$cell || $cell['letter'] === null) continue;
-                if (!empty($cell['isBlank'])) {
-                    $need = '?';
-                } else {
-                    $need = mb_strtoupper($cell['letter'], 'UTF-8');
-                }
-                if (empty($rackCounts[$need])) {
-                    throw new Exception('Ruch niemożliwy przy podanym stojaku — brak wymaganej płytki: ' . $need);
-                }
-                $rackCounts[$need]--;
-            }
-
-            // build remaining rack string
-            $postParts = [];
-            foreach ($rackCounts as $k => $cnt) {
-                for ($i = 0; $i < $cnt; $i++) $postParts[] = $k;
-            }
-            $postRack = implode('', $postParts);
+        if ($pm->type === 'PLAY' && !empty($pm->rack) && isset($placement) && !empty($placement->placed)) {
+            $postRack = Scorer::computeRemainingRackAfterPlacement($board, $placement, $pm->rack);
         }
 
         $dataToAdd = [

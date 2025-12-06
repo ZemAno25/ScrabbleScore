@@ -67,6 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['game_id'])) {
 
     foreach ($moves as $m) {
         $nick = $m['nick'] ?? ($players[$m['player_id']] ?? '');
+        $formatScore = static function(int $val): string {
+            return $val >= 0 ? '+' . $val : (string)$val;
+        };
+
         if ($m['type'] === 'PLAY') {
             $rack = isset($m['rack']) ? str_replace(' ', '', $m['rack']) : '';
             $pos  = $m['position'] ?? '';
@@ -76,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['game_id'])) {
             $total = (int)$m['cum_score'];
             // keep empty tokens explicit so spacing matches Quackle (empty rack => leading space)
             $body = $rack . ' ' . $pos . ' ' . $quackWord;
-            $lines[] = '>' . $nick . ': ' . $body . ' +' . $score . ' ' . $total;
+            $lines[] = '>' . $nick . ': ' . $body . ' ' . $formatScore($score) . ' ' . $total;
 
             // apply to board so subsequent moves see placed letters
             try {
@@ -91,13 +95,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['game_id'])) {
             $score = (int)$m['score'];
             $total = (int)$m['cum_score'];
             $body = $rack . ' ' . $minus;
-            $lines[] = '>' . $nick . ': ' . $body . ' +' . $score . ' ' . $total;
+            $lines[] = '>' . $nick . ': ' . $body . ' ' . $formatScore($score) . ' ' . $total;
         } elseif ($m['type'] === 'PASS') {
             $rack = isset($m['rack']) ? str_replace(' ', '', $m['rack']) : '';
             $score = (int)$m['score'];
             $total = (int)$m['cum_score'];
             $body = $rack . ' -';
-            $lines[] = '>' . $nick . ': ' . $body . ' +' . $score . ' ' . $total;
+            $lines[] = '>' . $nick . ': ' . $body . ' ' . $formatScore($score) . ' ' . $total;
         } elseif ($m['type'] === 'ENDGAME') {
             // try to extract rack from word/raw_input
             $endRack = '';
@@ -122,9 +126,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['game_id'])) {
             }
             $score = (int)$m['score'];
             $total = (int)$m['cum_score'];
-            // keep empty rack token for spacing consistency
-            $body = '' . ' ' . '(' . $endRack . ')';
-            $lines[] = '>' . $nick . ': ' . $body . ' +' . $score . ' ' . $total;
+
+            $rackToken = '';
+            if (!empty($m['rack'])) {
+                $rackToken = str_replace(' ', '', $m['rack']);
+            }
+
+            $bodyParts = [];
+            if ($rackToken !== '') {
+                $bodyParts[] = $rackToken;
+            }
+            $bodyParts[] = '(' . $endRack . ')';
+            $body = implode(' ', $bodyParts);
+
+            $lines[] = '>' . $nick . ': ' . $body . ' ' . $formatScore($score) . ' ' . $total;
         } else {
             // Unknown type – fallback to raw_input if available
             if (!empty($m['raw_input'])) {
