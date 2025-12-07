@@ -25,8 +25,7 @@ class MoveParser {
             return $pm;
         }
         if ($upper === 'EXCHANGE') {
-            $pm->type = 'EXCHANGE';
-            return $pm;
+            throw new InvalidArgumentException('Użyj formatu "STOJAK EXCHANGE (LITERY)" dla wymiany.');
         }
 
         // Obsługa zapisu ENDGAME oraz ENDGAME z opcjonalnym stojakiem, np. "ENDGAME (Ź)"
@@ -83,26 +82,26 @@ class MoveParser {
             $pm->rack = mb_strtoupper($tokens[0], 'UTF-8');
 
             // Opcjonalna lista wymienianych liter w nawiasie
-            if (count($tokens) > 2) {
-                $rest = implode(' ', array_slice($tokens, 2));
-                $rest = trim($rest);
-
-                // Jeżeli zapis w nawiasach, usuń je
-                if (preg_match('/^\((.+)\)$/u', $rest, $m)) {
-                    $letters = $m[1];
-                } else {
-                    $letters = $rest;
-                }
-
-                // Zachowaj litery tak jak wpisano (w razie potrzeby
-                // można je później normalizować)
-                $pm->word = str_replace(' ', '', $letters);
-
-                // Prosta walidacja znaków liter wymienianych
-                if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]*$/u', $pm->word)) {
-                    throw new InvalidArgumentException('Niepoprawne znaki w liście wymienianych liter.');
-                }
+            if (count($tokens) < 3) {
+                throw new InvalidArgumentException('Wymiana musi zawierać litery podane w nawiasach.');
             }
+
+            $rest = implode(' ', array_slice($tokens, 2));
+            $rest = trim($rest);
+
+            if (!preg_match('/^\((.+)\)$/u', $rest, $m)) {
+                throw new InvalidArgumentException('Litery wymieniane muszą być zapisane w nawiasach.');
+            }
+
+            $letters = mb_strtoupper(str_replace(' ', '', $m[1]), 'UTF-8');
+            if ($letters === '') {
+                throw new InvalidArgumentException('Nie podano liter do wymiany.');
+            }
+            if (!preg_match('/^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\?]+$/u', $letters)) {
+                throw new InvalidArgumentException('Niepoprawne znaki w liście wymienianych liter.');
+            }
+
+            $pm->word = $letters;
 
             return $pm;
         }

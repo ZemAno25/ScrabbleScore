@@ -54,13 +54,22 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['p1'],$_POST['p2'])) {
 
 <div class="card">
 <h2>Ostatnie gry</h2>
-<table><tr><th>ID</th><th>Gracze</th><th>Data</th><th></th></tr>
+<table><tr><th>ID</th><th>Gracze</th><th>Data</th><th>Akcje</th></tr>
 <?php foreach(GameRepo::list() as $g): ?>
 <tr>
 <td><?=$g['id']?></td>
 <td><?=htmlspecialchars($g['player1'])?> vs <?=htmlspecialchars($g['player2'])?></td>
 <td><?=$g['started_at']?></td>
-<td><a class="btn" href="play.php?game_id=<?=$g['id']?>">Otwórz</a></td>
+<td>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn" href="play.php?game_id=<?=$g['id']?>">Otwórz</a>
+        <form method="post" action="delete_game.php"
+              onsubmit="return confirm('Czy na pewno usunąć grę #<?=$g['id']?>?');">
+            <input type="hidden" name="game_id" value="<?=$g['id']?>">
+            <button type="submit" class="btn btn-danger">Usuń</button>
+        </form>
+    </div>
+</td>
 </tr>
 <?php endforeach; ?>
 </table>

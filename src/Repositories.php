@@ -133,6 +133,12 @@ class GameRepo
         $row = $stmt->fetch();
         return $row ?: null;
     }
+
+    public static function delete(int $id): void
+    {
+        $stmt = Database::get()->prepare('DELETE FROM games WHERE id = ?');
+        $stmt->execute([$id]);
+    }
 }
 
 class MoveRepo
@@ -245,6 +251,12 @@ class MoveRepo
 
         $stmt->execute();
         return (int)$stmt->fetchColumn();
+    }
+
+    public static function deleteByGame(int $gameId): void
+    {
+        $stmt = Database::get()->prepare('DELETE FROM moves WHERE game_id = ?');
+        $stmt->execute([$gameId]);
     }
 
     public static function byGame(int $game_id): array

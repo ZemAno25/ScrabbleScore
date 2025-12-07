@@ -153,6 +153,29 @@ Na ekranie rejestracji ruchu:
   (np. dla ruchów specjalnych ENDGAME lub korekt).
 
 
+2.5. Walidacja stojaków i zawartości worka
+
+Aplikacja waliduje każdy ruch w oparciu o startowy zestaw 100 płytek
+(zgodnie z tabelą liter). Liczba płytek zużytych na planszy oraz
+w zapisanych stojakach nie może przekroczyć zawartości worka. Dodatkowe
+zasady:
+
+- dla gracza zapisującego (recorder) ruchy PLAY, EXCHANGE i ENDGAME
+  muszą zawierać stojak; gdy w puli niewidzianych płytek (worek +
+  stojak przeciwnika) pozostaje ≥ 7 liter, stojak zapisującego musi
+  zawierać pełne 7 płytek,
+- ruch PASS zapisującego przyjmowany jest tylko wtedy, gdy istnieje
+  wcześniejszy `post_rack` (zachowujemy poprzedni stojak),
+- zapis EXCHANGE wymaga podania liter oddawanych do worka w nawiasach,
+- stojaki gracza z unknown rackiem są rekonstruowane z liter zagranych
+  w danym ruchu; nie mogą zużywać więcej liter niż pozostało w worku,
+- po każdym ruchu aplikacja dba, aby dobieranie płytek nie wykraczało
+  poza aktualną pulę (nie wolno „pożyczyć” więcej niż zostało),
+- importer Quackle wymaga wskazania, który gracz prowadził zapis; dane
+  dotyczące stojaka sprawdzane są tylko dla tego gracza, natomiast
+  pozostali gracze muszą jedynie mieścić się w globalnym limicie płytek.
+
+
 3. WYŚWIETLANIE BIEŻĄCEJ GRY
 ----------------------------
 

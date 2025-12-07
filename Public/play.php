@@ -60,9 +60,15 @@ if (count($moves) > 0) {
 $recorderId = $game['recorder_player_id'] ?? null;
 
 // helper: find last recorded rack for a player (searching moves list)
-function findLastRackForPlayer(array $moves, int $playerId): ?string {
+function findLastRackForPlayer(array $moves, int $playerId, ?int $recorderId = null): ?string {
     for ($i = count($moves) - 1; $i >= 0; $i--) {
-        if ($moves[$i]['player_id'] == $playerId && !empty($moves[$i]['rack'])) {
+        if ($moves[$i]['player_id'] != $playerId) {
+            continue;
+        }
+        if ($recorderId !== null && $playerId !== $recorderId) {
+            continue;
+        }
+        if (!empty($moves[$i]['rack'])) {
             return $moves[$i]['rack'];
         }
     }
@@ -70,13 +76,52 @@ function findLastRackForPlayer(array $moves, int $playerId): ?string {
 }
 
 // helper: find last post_rack (remaining rack after a move) for a player
-function findLastPostRackForPlayer(array $moves, int $playerId): ?string {
+function findLastPostRackForPlayer(array $moves, int $playerId, ?int $recorderId = null): ?string {
     for ($i = count($moves) - 1; $i >= 0; $i--) {
-        if ($moves[$i]['player_id'] == $playerId && !empty($moves[$i]['post_rack'])) {
+        if ($moves[$i]['player_id'] != $playerId) {
+            continue;
+        }
+        if ($recorderId !== null && $playerId !== $recorderId) {
+            continue;
+        }
+        if (!empty($moves[$i]['post_rack'])) {
             return $moves[$i]['post_rack'];
         }
     }
     return null;
+}
+
+function boardTileCount(Board $board): int
+{
+    $count = 0;
+    for ($r = 0; $r < 15; $r++) {
+        for ($c = 0; $c < 15; $c++) {
+            if ($board->cells[$r][$c]['letter'] !== null) {
+                $count++;
+            }
+        }
+    }
+    return $count;
+}
+
+function rackFromMoveIfKnown(array $move, ?int $recorderId): ?string
+{
+    if (empty($move['rack'])) {
+        return null;
+    }
+    if ($recorderId !== null && ($move['player_id'] ?? null) != $recorderId) {
+        return null;
+    }
+    return $move['rack'];
+}
+
+function totalTilesInSet(array $bag): int
+{
+    $sum = 0;
+    foreach ($bag as $cnt) {
+        $sum += $cnt;
+    }
+    return $sum;
 }
 
 // Compute default raw input prefill: if next player is the recorder, prefill their remaining rack
@@ -84,11 +129,11 @@ $defaultRaw = '';
 $defaultRack = '';
 if ($recorderId !== null && $nextPlayer == $recorderId) {
     // prefer the last known post_rack (remaining after recorder's previous move)
-    $lastRack = findLastPostRackForPlayer($moves, $recorderId);
+    $lastRack = findLastPostRackForPlayer($moves, $recorderId, $recorderId);
     $lastRackIsPost = true;
     if ($lastRack === null) {
         // fallback to any recorded rack value (pre-move rack)
-        $lastRack = findLastRackForPlayer($moves, $recorderId);
+        $lastRack = findLastRackForPlayer($moves, $recorderId, $recorderId);
         $lastRackIsPost = false;
     }
     if ($lastRack !== null) {
@@ -237,6 +282,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             validateRackString($pm->rack);
         }
 
+        if ($pm->type === 'EXCHANGE') {
+            $exchangeLetters = str_replace(' ', '', (string)$pm->word);
+            if ($exchangeLetters === '') {
+                throw new Exception('Ruch wymiany musi zawierać litery oddawane do worka w nawiasach.');
+            }
+        }
+
+        if ($recorderId !== null && $player_id === $recorderId) {
+            $boardTilesBeforeMove = boardTileCount($board);
+            $totalTilesAvailable  = totalTilesInSet(initialBag());
+            if (in_array($pm->type, ['PLAY', 'EXCHANGE', 'ENDGAME'], true)) {
+                if (empty($pm->rack)) {
+                    throw new Exception('Gracz zapisujący musi podać swój stojak.');
+                }
+                $rackLen = mb_strlen($pm->rack, 'UTF-8');
+                $unseen  = $totalTilesAvailable - $boardTilesBeforeMove - $rackLen;
+                if ($unseen < 0) {
+                    throw new Exception('Stojak gracza zapisującego jest niespójny z zestawem startowym.');
+                }
+                if ($unseen > 7 && $rackLen !== 7) {
+                    throw new Exception('Gracz zapisujący musi posiadać pełny siedmioliterowy stojak.');
+                }
+            } elseif ($pm->type === 'PASS') {
+                $lastPost = findLastPostRackForPlayer($moves, $recorderId, $recorderId);
+                if ($lastPost === null) {
+                    throw new Exception('Przed PASS należy mieć zapisany poprzedni stojak gracza zapisującego.');
+                }
+            }
+        }
+
         $score = 0;
         $placement = null;
         if ($pm->type === 'PLAY') {
@@ -274,8 +349,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
 
                 // Odejmij znane stojaki z historii ruchów
                 foreach ($moves as $mv) {
-                    if (empty($mv['rack'])) continue;
-                    $rackClean = str_replace(' ', '', $mv['rack']);
+                    $rackStr = rackFromMoveIfKnown($mv, $recorderId);
+                    if ($rackStr === null) continue;
+                    $rackClean = str_replace(' ', '', $rackStr);
                     $letters = mb_str_split($rackClean, 1, 'UTF-8');
                     foreach ($letters as $lt) {
                         $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
@@ -377,11 +453,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         $moves = MoveRepo::byGame($game_id);
 
         // pomocnicze: znajdź ostatni zapis stojaka dla gracza
-        $findLastRack = function(array $moves, int $forPlayerId, int $beforeIndex = null) {
+        $findLastRack = function(array $moves, int $forPlayerId, int $beforeIndex = null) use ($recorderId) {
             // jeśli podano $beforeIndex, szukamy tylko we wcześniejszych ruchach
             $max = is_int($beforeIndex) ? $beforeIndex : count($moves) - 1;
             for ($i = $max; $i >= 0; $i--) {
-                if ($moves[$i]['player_id'] == $forPlayerId && !empty($moves[$i]['rack'])) {
+                if ($moves[$i]['player_id'] != $forPlayerId) {
+                    continue;
+                }
+                if ($recorderId !== null && $forPlayerId !== $recorderId) {
+                    continue;
+                }
+                if (!empty($moves[$i]['rack'])) {
                     return $moves[$i]['rack'];
                 }
             }
@@ -412,8 +494,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
 
         // odejmij też litery z zapisanego stojaka (jeśli któryś ruch zawierał 'rack')
         foreach ($moves as $mv) {
-            if (empty($mv['rack'])) continue;
-            $rackClean = str_replace(' ', '', $mv['rack']);
+            $rackStr = rackFromMoveIfKnown($mv, $recorderId);
+            if ($rackStr === null) continue;
+            $rackClean = str_replace(' ', '', $rackStr);
             $letters = mb_str_split($rackClean, 1, 'UTF-8');
             foreach ($letters as $lt) {
                 $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
@@ -606,8 +689,9 @@ for ($r = 0; $r < 15; $r++) {
                 // Odejmij także płytki, które pojawiają się w zapisanych polach `rack`
                 // z historii ruchów — wtedy nie powinny być uznawane za obecne w worku.
                 foreach ($moves as $mv) {
-                    if (empty($mv['rack'])) continue;
-                    $rackClean = str_replace(' ', '', $mv['rack']);
+                    $rackStr = rackFromMoveIfKnown($mv, $recorderId);
+                    if ($rackStr === null) continue;
+                    $rackClean = str_replace(' ', '', $rackStr);
                     $letters = mb_str_split($rackClean, 1, 'UTF-8');
                     foreach ($letters as $lt) {
                         $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
