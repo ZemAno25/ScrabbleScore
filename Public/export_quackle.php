@@ -4,33 +4,15 @@ require_once __DIR__ . '/../src/Board.php';
 require_once __DIR__ . '/../src/Scorer.php';
 
 function toQuackleWord(string $internal): string {
-    // Convert internal word (parentheses mark existing letters)
-    // to Quackle-style word where existing letters are '.'
-    $out = '';
-    $len = mb_strlen($internal, 'UTF-8');
-    $i = 0;
-    while ($i < $len) {
-        $ch = mb_substr($internal, $i, 1, 'UTF-8');
-        if ($ch === '(') {
-            // find closing
-            $j = $i + 1;
-            $inner = '';
-            while ($j < $len) {
-                $c2 = mb_substr($internal, $j, 1, 'UTF-8');
-                if ($c2 === ')') break;
-                $inner .= $c2;
-                $j++;
-            }
-            // replace each existing letter by a dot (usually inner length == 1)
-            $dots = str_repeat('.', mb_strlen($inner, 'UTF-8'));
-            $out .= $dots;
-            $i = $j + 1;
-            continue;
-        }
-        $out .= $ch;
-        $i++;
-    }
-    return $out;
+    // Replace each "(existing)" fragment with dots so Quackle treats them as already on board.
+    return preg_replace_callback(
+        '/\(([^)]+)\)/u',
+        function (array $m): string {
+            $len = mb_strlen($m[1], 'UTF-8');
+            return str_repeat('.', $len);
+        },
+        $internal
+    );
 }
 
 $games = GameRepo::list();
@@ -127,17 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['game_id'])) {
             $score = (int)$m['score'];
             $total = (int)$m['cum_score'];
 
-            $rackToken = '';
-            if (!empty($m['rack'])) {
-                $rackToken = str_replace(' ', '', $m['rack']);
-            }
-
-            $bodyParts = [];
-            if ($rackToken !== '') {
-                $bodyParts[] = $rackToken;
-            }
-            $bodyParts[] = '(' . $endRack . ')';
-            $body = implode(' ', $bodyParts);
+            $body = '(' . $endRack . ')';
 
             $lines[] = '>' . $nick . ': ' . $body . ' ' . $formatScore($score) . ' ' . $total;
         } else {

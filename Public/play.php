@@ -84,8 +84,8 @@ function findLastPostRackForPlayer(array $moves, int $playerId, ?int $recorderId
         if ($recorderId !== null && $playerId !== $recorderId) {
             continue;
         }
-        if (!empty($moves[$i]['post_rack'])) {
-            return $moves[$i]['post_rack'];
+        if (array_key_exists('post_rack', $moves[$i]) && $moves[$i]['post_rack'] !== null) {
+            return (string)$moves[$i]['post_rack'];
         }
     }
     return null;
@@ -453,18 +453,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         $moves = MoveRepo::byGame($game_id);
 
         // pomocnicze: znajdź ostatni zapis stojaka dla gracza
-        $findLastRack = function(array $moves, int $forPlayerId, int $beforeIndex = null) use ($recorderId) {
+        $findLastRack = function(array $moves, int $forPlayerId, ?int $beforeIndex = null, bool $preferPost = false) use ($recorderId) {
             // jeśli podano $beforeIndex, szukamy tylko we wcześniejszych ruchach
             $max = is_int($beforeIndex) ? $beforeIndex : count($moves) - 1;
             for ($i = $max; $i >= 0; $i--) {
-                if ($moves[$i]['player_id'] != $forPlayerId) {
+                $mv = $moves[$i];
+                if (($mv['player_id'] ?? null) != $forPlayerId) {
                     continue;
                 }
                 if ($recorderId !== null && $forPlayerId !== $recorderId) {
                     continue;
                 }
-                if (!empty($moves[$i]['rack'])) {
-                    return $moves[$i]['rack'];
+
+                $hasPost = array_key_exists('post_rack', $mv) && $mv['post_rack'] !== null;
+                $post = $hasPost ? str_replace(' ', '', (string)$mv['post_rack']) : null;
+
+                $hasRack = array_key_exists('rack', $mv) && $mv['rack'] !== null;
+                $rack = $hasRack ? str_replace(' ', '', (string)$mv['rack']) : null;
+
+                if ($preferPost && $post !== null) {
+                    return $post;
+                }
+                if ($rack !== null && $rack !== '') {
+                    return $rack;
+                }
+                if (!$preferPost && $post !== null && $post !== '') {
+                    return $post;
                 }
             }
             return null;
@@ -538,7 +552,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
                     $winner = $player_id;
                     $loser  = ($winner === $p1) ? $p2 : $p1;
 
-                    $loserRack = $findLastRack($moves, $loser);
+                    $loserRack = $findLastRack($moves, $loser, null, true);
                     if ($loserRack !== null) {
                         $loserValue = $calcLetters($loserRack);
                         $bonus = $loserValue * 2;
@@ -565,8 +579,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
         if ($lastNPass($moves, 3)) {
             $p1 = $game['player1_id'];
             $p2 = $game['player2_id'];
-            $r1 = $findLastRack($moves, $p1);
-            $r2 = $findLastRack($moves, $p2);
+            $r1 = $findLastRack($moves, $p1, null, true);
+            $r2 = $findLastRack($moves, $p2, null, true);
             $moveNo = count($moves) + 1;
             if ($r1 !== null) {
                 $v1 = $calcLetters($r1);
@@ -686,20 +700,6 @@ for ($r = 0; $r < 15; $r++) {
         }
     }
 }
-                // Odejmij także płytki, które pojawiają się w zapisanych polach `rack`
-                // z historii ruchów — wtedy nie powinny być uznawane za obecne w worku.
-                foreach ($moves as $mv) {
-                    $rackStr = rackFromMoveIfKnown($mv, $recorderId);
-                    if ($rackStr === null) continue;
-                    $rackClean = str_replace(' ', '', $rackStr);
-                    $letters = mb_str_split($rackClean, 1, 'UTF-8');
-                    foreach ($letters as $lt) {
-                        $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
-                        if (isset($remaining[$key]) && $remaining[$key] > 0) {
-                            $remaining[$key]--;
-                        }
-                    }
-                }
 
 ksort($remaining, SORT_STRING);
 $bagLetters = '';
@@ -906,7 +906,7 @@ $bagLetters = trim($bagLetters);
                 </div>
 
                 <div class="bag-panel">
-                    <div class="bag-title">Zawartość worka</div>
+                    <div class="bag-title">Pozostałe płytki</div>
                     <div class="bag-letters"><?=htmlspecialchars($bagLetters)?></div>
                 </div>
             </div>
