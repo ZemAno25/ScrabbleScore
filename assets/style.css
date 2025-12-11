@@ -29,6 +29,31 @@ body {
     padding: 24px 32px;
 }
 
+.container-narrow {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 32px;
+}
+
+.container-wide {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 32px;
+}
+
+.home-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.home-stack {
+    width: min(420px, 100%);
+}
+
 h1,
 h2,
 h3 {
@@ -113,6 +138,21 @@ h3 {
     box-shadow: 0 8px 20px rgba(229, 57, 53, 0.55);
 }
 
+.menu-vertical,
+.report-links {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(420px, 100%);
+    margin: 0 auto;
+}
+
+.menu-vertical .btn,
+.report-links .btn {
+    width: 100%;
+    text-align: center;
+}
+
 /* Formularze */
 
 label {
@@ -149,6 +189,12 @@ select:focus {
     box-shadow: 0 0 0 1px rgba(86, 204, 242, 0.4);
 }
 
+.form-card {
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 /* Drobne teksty */
 
 .small {
@@ -172,6 +218,14 @@ select:focus {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.9fr);
     gap: 24px;
     align-items: flex-start;
+}
+
+.page-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 24px;
 }
 
 /* Tabele ruchów */
@@ -209,6 +263,11 @@ tr:nth-child(even) td {
 th:nth-child(3),
 td:nth-child(3) {
     min-width: 420px;
+}
+
+.table-compact th:nth-child(3),
+.table-compact td:nth-child(3) {
+    min-width: auto;
 }
 
 /* Wybór gracza – radio */

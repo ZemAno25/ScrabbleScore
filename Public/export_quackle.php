@@ -151,10 +151,10 @@ $gamesList = GameRepo::list();
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<div class="container">
+<div class="container container-narrow">
     <h1>Eksport do Quackle (.gcg)</h1>
 
-    <div class="card">
+    <div class="card form-card">
         <form method="post">
             <label>Wybierz grę do eksportu</label>
             <select name="game_id">
@@ -173,8 +173,8 @@ $gamesList = GameRepo::list();
         <div class="card">
             <h3>Podgląd wygenerowanego pliku (.gcg): <?= htmlspecialchars($previewFilename) ?></h3>
             <textarea style="width:100%;height:360px;font-family:monospace;" readonly><?= htmlspecialchars($previewGcg) ?></textarea>
-            <div style="margin-top:8px">
-                <form method="post" style="display:inline">
+            <div class="page-actions">
+                <form method="post">
                     <input type="hidden" name="game_id" value="<?= htmlspecialchars((string)$previewGameId) ?>">
                     <button class="btn">Pobierz</button>
                 </form>
@@ -182,7 +182,9 @@ $gamesList = GameRepo::list();
         </div>
     <?php endif; ?>
 
-    <p><a class="btn" href="index.php">Powrót</a></p>
+    <div class="page-actions">
+        <a class="btn" href="index.php">Powrót</a>
+    </div>
 </div>
 </body>
 </html>

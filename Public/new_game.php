@@ -20,9 +20,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['p1'],$_POST['p2'])) {
 <!doctype html><html lang="pl"><head>
 <meta charset="utf-8"><title>Nowa gra</title>
 <link rel="stylesheet" href="../assets/style.css">
-</head><body><div class="container">
+</head><body><div class="container container-narrow">
 <h1>Utwórz nową grę</h1>
-<div class="card">
+<div class="card form-card">
 <form method="post">
 <div class="grid">
 <div>

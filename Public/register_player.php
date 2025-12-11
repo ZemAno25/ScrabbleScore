@@ -18,9 +18,9 @@ $players = PlayerRepo::all();
 <!doctype html><html lang="pl"><head>
 <meta charset="utf-8"><title>Rejestracja gracza</title>
 <link rel="stylesheet" href="../assets/style.css">
-</head><body><div class="container">
+</head><body><div class="container container-narrow">
 <h1>Zarejestruj gracza</h1>
-<div class="card">
+<div class="card form-card">
 <form method="post">
 <label>Nick</label>
 <input name="nick" maxlength="40" required>

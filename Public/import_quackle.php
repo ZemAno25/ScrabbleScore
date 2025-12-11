@@ -4,16 +4,17 @@ require_once __DIR__ . '/../src/Board.php';
 require_once __DIR__ . '/../src/Scorer.php';
 require_once __DIR__ . '/../src/QuackleImporter.php';
 
-$error          = null;
-$previewGame    = null;
-$importedGameId = null;
-$encoded        = null;
-$defaultDateTime = date('Y-m-d\TH:i');
-$upP1 = $upP2 = null;
+$error            = null;
+$previewGame      = null;
+$importedGameId   = null;
+$encoded          = null;
+$defaultDateTime  = date('Y-m-d\TH:i');
+$upP1 = $upP2      = null;
 $existsP1 = $existsP2 = false;
-$duplicateGame = null;
-$recorderStats = [];
-$recorderGuess = null;
+$duplicateGame    = null;
+$recorderStats    = [];
+$recorderGuess    = null;
+$previewFileName  = null;
 
 function normalizeNickUpper(string $nick): string
 {
@@ -32,6 +33,15 @@ function normalizeDatetimeFromInput(?string $val): ?string
         $val .= ':00';
     }
     return $val;
+}
+
+function formatErrorWithFilename(string $message, ?string $fileName): string
+{
+    $fileName = trim((string)$fileName);
+    if ($fileName === '') {
+        return $message;
+    }
+    return $message . ' (plik: ' . $fileName . ')';
 }
 
 function initialBag(): array
@@ -360,10 +370,11 @@ function importQuackleGameToDatabase(
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['import_mode'], $_POST['gcg_text'])) {
         $mode = $_POST['import_mode'] === 'PFS' ? 'PFS' : 'QUACKLE';
+        $importFileName = trim((string)($_POST['gcg_filename'] ?? ''));
         $encodedText = $_POST['gcg_text'];
         $contents = base64_decode($encodedText, true);
         if ($contents === false) {
-            $error = 'Nie udało się odkodować danych gry.';
+            $error = formatErrorWithFilename('Nie udało się odkodować danych gry.', $importFileName);
         } else {
             $startedAt = normalizeDatetimeFromInput($_POST['game_datetime'] ?? null);
 
@@ -387,24 +398,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hash = hash('sha256', $contents);
                 $importedGameId = importQuackleGameToDatabase($game, $mode, $startedAt, $hash, $recorderChoice);
             } catch (PDOException $e) {
-                $error = 'Błąd bazy danych podczas importu: ' . $e->getMessage();
+                $error = formatErrorWithFilename(
+                    'Błąd bazy danych podczas importu: ' . $e->getMessage(),
+                    $importFileName
+                );
             } catch (Throwable $e) {
-                $error = 'Błąd importu: ' . $e->getMessage();
+                $error = formatErrorWithFilename('Błąd importu: ' . $e->getMessage(), $importFileName);
             }
         }
     } elseif (isset($_FILES['gcgfile'])) {
+        $uploadedFileName = trim((string)($_FILES['gcgfile']['name'] ?? ''));
         if ($_FILES['gcgfile']['error'] !== UPLOAD_ERR_OK) {
-            $error = 'Błąd uploadu pliku.';
+            $error = formatErrorWithFilename('Błąd uploadu pliku.', $uploadedFileName);
         } else {
             $contents = file_get_contents($_FILES['gcgfile']['tmp_name']);
             if ($contents === false) {
-                $error = 'Nie udało się odczytać pliku.';
+                $error = formatErrorWithFilename('Nie udało się odczytać pliku.', $uploadedFileName);
             } else {
                 try {
                     // Parsowanie pliku – bez bazy
                     $previewGame = QuackleImporter::parseGcg($contents);
                     $encoded     = base64_encode($contents);
-
+                    $previewFileName = $uploadedFileName !== '' ? $uploadedFileName : null;
                     $rawP1 = $previewGame->player1Name ?? 'GRACZ1';
                     $rawP2 = $previewGame->player2Name ?? 'GRACZ2';
 
@@ -415,7 +430,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $guessData = guessRecorderChoice($recorderStats, $upP1, $upP2);
                     $recorderGuess = $guessData['guess'] ?? null;
                 } catch (Throwable $e) {
-                    $error = 'Błąd parsowania pliku: ' . $e->getMessage();
+                    $error = formatErrorWithFilename(
+                        'Błąd parsowania pliku: ' . $e->getMessage(),
+                        $uploadedFileName
+                    );
                 }
 
                 if ($previewGame && !$error) {
@@ -427,7 +445,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $hash = hash('sha256', $contents);
                         $duplicateGame = GameRepo::findBySourceHash($hash);
                     } catch (PDOException $e) {
-                        $error = 'Błąd połączenia z bazą podczas sprawdzania graczy lub duplikatu: ' . $e->getMessage();
+                        $error = formatErrorWithFilename(
+                            'Błąd połączenia z bazą podczas sprawdzania graczy lub duplikatu: ' . $e->getMessage(),
+                            $uploadedFileName
+                        );
                     }
                 }
             }
@@ -443,7 +464,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<div class="container">
+<div class="container container-narrow">
     <h1>Wczytaj grę z Quackle</h1>
 
     <?php if ($error): ?>
@@ -457,7 +478,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     <?php endif; ?>
 
-    <div class="card">
+    <div class="card form-card">
         <form method="post" enctype="multipart/form-data">
             <label>Plik gry (.gcg)</label>
             <input type="file" name="gcgfile" required>
@@ -476,6 +497,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             ?>
             <h2>Podgląd pliku</h2>
+            <?php if ($previewFileName): ?>
+                <p>Nazwa pliku: <strong><?= htmlspecialchars($previewFileName) ?></strong></p>
+            <?php endif; ?>
             <p>Gracz 1 z pliku: <strong><?= htmlspecialchars($p1) ?></strong></p>
             <p>Gracz 2 z pliku: <strong><?= htmlspecialchars($p2) ?></strong></p>
             <p>Liczba ruchów: <?= count($previewGame->moves) ?></p>
@@ -565,6 +589,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <form method="post">
                     <input type="hidden" name="gcg_text"
                            value="<?= htmlspecialchars($encoded ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                    <input type="hidden" name="gcg_filename"
+                           value="<?= htmlspecialchars($previewFileName ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
 
                     <label>Data i godzina gry</label>
                     <input type="datetime-local" name="game_datetime"
@@ -647,7 +673,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     <?php endif; ?>
 
-    <p><a class="btn" href="index.php">Powrót</a></p>
+    <div class="page-actions">
+        <a class="btn" href="index.php">Powrót</a>
+    </div>
 </div>
 </body>
 </html>
