@@ -49,7 +49,7 @@ $topMoves = $pdo->query("
                     <td><?= $m['position'] ?></td>
                     <td><?= htmlspecialchars($m['word']) ?></td>
                     <td><?= $m['score'] ?></td>
-                    <td><a class="btn" href="play.php?game_id=<?= $m['game_id'] ?>">Otwórz</a></td>
+                    <td><a class="btn" href="stats_games.php?game_id=<?= $m['game_id'] ?>#viewer">Otwórz</a></td>
                 </tr>
             <?php endforeach; ?>
         </table>

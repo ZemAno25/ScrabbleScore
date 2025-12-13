@@ -43,7 +43,7 @@ $gamesTop = $pdo->query("
                     <td><?= htmlspecialchars($dateFmt) ?></td>
                     <td><?= htmlspecialchars($g['p1']) ?> vs <?= htmlspecialchars($g['p2']) ?></td>
                     <td><?= $g['total'] ?></td>
-                    <td><a class="btn" href="play.php?game_id=<?= $g['id'] ?>">Otwórz</a></td>
+                    <td><a class="btn" href="stats_games.php?game_id=<?= $g['id'] ?>#viewer">Otwórz</a></td>
                 </tr>
             <?php endforeach; ?>
     </table>

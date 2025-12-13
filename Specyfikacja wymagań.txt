@@ -29,6 +29,12 @@ następujących opcji dostępnych po naciśnięciu odpowiedniego przycisku:
 Po kliknięciu odpowiedniej opcji użytkownik przechodzi do właściwego
 ekranu funkcji.
 
+Interfejs strony startowej ma być widoczny od razu po załadowaniu
+strony bez przewijania (wyrównanie całej zawartości do górnej krawędzi
+widoku). Elementy menu są prezentowane jako duże przyciski CTA zajmujące
+całą szerokość kolumny (układ pionowy), tak aby sterowanie było wygodne
+również na urządzeniach dotykowych.
+
 
 1. REJESTRACJA GRACZA
 ---------------------
@@ -466,6 +472,25 @@ powinny być dostępne statystyki pozwalające ocenić:
 - którzy gracze są najaktywniejsi,
 - które ruchy były najwyżej punktowane,
 - ile siódemek zostało wyłożonych.
+
+Raport "Przegląd gier" przedstawia dwa panele obok siebie:
+- lewy panel zawiera tabelę z listą gier, której wiersze są klikalne
+  (nie stosujemy dodatkowych przycisków "Otwórz"); kliknięcie całego
+  wiersza przełącza prawy panel w tryb podglądu wybranej gry,
+- prawy panel prezentuje interaktywny podgląd przebiegu gry:
+  - pełnowymiarowa plansza wypełnia dostępne miejsce,
+  - poniżej planszy znajdują się cztery przyciski nawigacji
+    (początek gry, ruch do tyłu, ruch do przodu, koniec gry) działające
+    wyłącznie dla ruchów typu PLAY,
+  - obok planszy wyświetlany jest zapis gry z kolumnami
+    `OSPS / +pkt / Σ`; kolumna OSPS prezentuje wskaźnik T/N w zależności
+    od zgodności ruchu ze słownikiem,
+  - kliknięcia przycisków nawigacyjnych synchronizują planszę oraz
+    podświetlenie bieżącego ruchu, przy czym zapis gry ma być widoczny
+    bez potrzeby przewijania.
+Wszystkie pozostałe raporty statystyczne (np. "Gry o największej sumie
+punktów", "Najwyżej punktowane ruchy") prowadzą do tego samego trybu
+podglądu poprzez link "Otwórz".
 
 
 7. SŁOWNIK OSPS I NARZĘDZIA POMOCNICZE
