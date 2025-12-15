@@ -106,13 +106,42 @@ function boardTileCount(Board $board): int
 
 function rackFromMoveIfKnown(array $move, ?int $recorderId): ?string
 {
-    if (empty($move['rack'])) {
-        return null;
-    }
     if ($recorderId !== null && ($move['player_id'] ?? null) != $recorderId) {
         return null;
     }
-    return $move['rack'];
+
+    $candidates = [];
+    if (array_key_exists('post_rack', $move) && $move['post_rack'] !== null) {
+        $candidates[] = (string)$move['post_rack'];
+    }
+    if (!empty($move['rack'])) {
+        $candidates[] = (string)$move['rack'];
+    }
+
+    foreach ($candidates as $cand) {
+        $rackClean = str_replace(' ', '', $cand);
+        if ($rackClean !== '') {
+            return $rackClean;
+        }
+    }
+
+    return null;
+}
+
+function latestPlayerRacks(array $moves, ?int $recorderId): array
+{
+    $byPlayer = [];
+    foreach ($moves as $mv) {
+        if (!isset($mv['player_id'])) {
+            continue;
+        }
+        $rackStr = rackFromMoveIfKnown($mv, $recorderId);
+        if ($rackStr === null) {
+            continue;
+        }
+        $byPlayer[$mv['player_id']] = $rackStr;
+    }
+    return $byPlayer;
 }
 
 function totalTilesInSet(array $bag): int
@@ -347,12 +376,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
                     }
                 }
 
-                // Odejmij znane stojaki z historii ruchów
-                foreach ($moves as $mv) {
-                    $rackStr = rackFromMoveIfKnown($mv, $recorderId);
-                    if ($rackStr === null) continue;
-                    $rackClean = str_replace(' ', '', $rackStr);
-                    $letters = mb_str_split($rackClean, 1, 'UTF-8');
+                // Odejmij znane stojaki z historii ruchów (najświeższe dla każdego gracza)
+                $latestRacks = latestPlayerRacks($moves, $recorderId);
+                foreach ($latestRacks as $rackStr) {
+                    $letters = mb_str_split($rackStr, 1, 'UTF-8');
                     foreach ($letters as $lt) {
                         $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
                         if (isset($remaining[$key]) && $remaining[$key] > 0) {
@@ -506,12 +533,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['raw'])) {
             }
         }
 
-        // odejmij też litery z zapisanego stojaka (jeśli któryś ruch zawierał 'rack')
-        foreach ($moves as $mv) {
-            $rackStr = rackFromMoveIfKnown($mv, $recorderId);
-            if ($rackStr === null) continue;
-            $rackClean = str_replace(' ', '', $rackStr);
-            $letters = mb_str_split($rackClean, 1, 'UTF-8');
+        // odejmij też litery z zapisanego stojaka (po jednym na gracza)
+        $latestRacks = latestPlayerRacks($moves, $recorderId);
+        foreach ($latestRacks as $rackStr) {
+            $letters = mb_str_split($rackStr, 1, 'UTF-8');
             foreach ($letters as $lt) {
                 $key = ($lt === '?') ? '?' : mb_strtoupper($lt, 'UTF-8');
                 if (isset($remaining[$key]) && $remaining[$key] > 0) {

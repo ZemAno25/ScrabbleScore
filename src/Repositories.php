@@ -168,11 +168,19 @@ class MoveRepo
             $wordsToCheck = [ (string)$data['word'] ];
         }
 
+        $normalizedWords = [];
         if (!empty($wordsToCheck)) {
             foreach ($wordsToCheck as $w) {
-                $w = trim((string)$w);
-                if ($w === '') continue;
-                $stmt = $pdo->prepare('SELECT 1 FROM lexicon_words WHERE lower(word) = lower(?) LIMIT 1');
+                $norm = self::normalizeLexiconWord((string)$w);
+                if ($norm === '') {
+                    continue;
+                }
+                $normalizedWords[$norm] = true;
+            }
+        }
+        if (!empty($normalizedWords)) {
+            $stmt = $pdo->prepare('SELECT 1 FROM lexicon_words WHERE word = ? LIMIT 1');
+            foreach (array_keys($normalizedWords) as $w) {
                 $stmt->execute([$w]);
                 $found = $stmt->fetchColumn();
                 if (!$found) { $osps = false; break; }
@@ -286,5 +294,23 @@ class MoveRepo
             $res[$row['player_id']] = (int)$row['s'];
         }
         return $res;
+    }
+
+    /**
+     * Normalizuje zapis słowa z ruchu (usuwa nawiasy/odstępy, zamienia na wielkie litery)
+     * i odrzuca ciągi zawierające znaki spoza alfabetu, którego spodziewamy się w słowniku.
+     */
+    private static function normalizeLexiconWord(string $word): string
+    {
+        // Usuń białe znaki i nawiasy używane w notacji ruchu
+        $stripped = str_replace(['(', ')', ' '], '', trim($word));
+        if ($stripped === '') {
+            return '';
+        }
+        $upper = mb_strtoupper($stripped, 'UTF-8');
+        if (!preg_match('/^[A-ZĄĆĘŁŃÓŚŹŻ]+$/u', $upper)) {
+            return '';
+        }
+        return $upper;
     }
 }
